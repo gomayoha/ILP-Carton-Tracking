@@ -1,0 +1,10 @@
+# Confidential source files (customer refs / POs of luxury brands). Never publish.
+reference/
+*.xlsx
+*.xls
+*.xlsm
+*.csv
+
+# Local tooling
+.claude/
+.DS_Store

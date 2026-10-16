@@ -1,0 +1,45 @@
+rules_version = '2';
+
+// Firestore security rules for Idea L Pack · Carton Tracking.
+// Copy this whole file into Firebase console → Firestore Database → Rules → Publish.
+//
+// Pick ONE line inside allowed() below:
+//   OPEN MODE  — anyone who has the app link can read and write (no login).
+//   LOGIN MODE — only staff signed in with an account you created in Firebase → Authentication.
+//                Use together with REQUIRE_LOGIN = true in src/config.js.
+//
+// The app never deletes records (they are voided instead), so deleting is blocked for everyone.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function allowed() {
+      return true;                      // OPEN MODE
+      // return request.auth != null;   // LOGIN MODE — swap the comment marks to switch
+    }
+
+    match /records/{id} {
+      allow read: if allowed();
+      allow create, update: if allowed()
+        && request.resource.data.id == id
+        && request.resource.data.type in ['handoff', 'transfer', 'shipment']
+        && request.resource.data.status in ['active', 'void'];
+      allow delete: if false;
+    }
+
+    match /items/{code} {
+      allow read, create, update: if allowed();
+      allow delete: if false;
+    }
+
+    // Imported item master (replaced as a whole on each import).
+    match /itemChunks/{id} {
+      allow read, write: if allowed();
+    }
+
+    match /meta/{id} {
+      allow read, create, update: if allowed();
+      allow delete: if false;
+    }
+  }
+}

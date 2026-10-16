@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Carton Tracking · tests</title>
+<script src="../vendor/qrcode-generator.js"></script>
+<style>
+  body { font: 14px/1.5 Montserrat, Arial, sans-serif; margin: 24px; }
+  .pass { color: #2e7d32; } .fail { color: #b3261e; font-weight: 600; }
+  h1 { font-size: 20px; } pre { background: #f5f5f3; padding: 8px; }
+</style>
+</head>
+<body>
+<h1>Business-rule tests</h1>
+<p>Open this page from the local server (e.g. http://127.0.0.1:8765/tests/run.html). Every line should be green.</p>
+<div id="out"></div>
+<script type="module">
+  import { split, notation, packingRows, totals, movementBlocks, recordCartons, fmtWO, validate } from '../src/model.js';
+  import { incrementDocNo, norm } from '../src/util.js';
+  import { parseScan, cartonPayload } from '../src/qr.js';
+  import { DEFAULT_SETTINGS } from '../src/store.js';
+  import { sampleRecords } from '../src/sample.js';
+
+  const out = document.getElementById('out');
+  let failed = 0, passed = 0;
+  const eq = (name, got, want) => {
+    const ok = JSON.stringify(got) === JSON.stringify(want);
+    ok ? passed++ : failed++;
+    out.insertAdjacentHTML('beforeend', `<div class="${ok ? 'pass' : 'fail'}">${ok ? '✓' : '✗'} ${name}${ok ? '' : `<pre>got:  ${JSON.stringify(got)}\nwant: ${JSON.stringify(want)}</pre>`}</div>`);
+  };
+
+  const [slip, ship] = sampleRecords();
+
+  // Paper notation on slip 0001955: 34T(100) + 1T(40) = 3,440 pcs
+  eq('split 3440 @ 100', split(3440, 100), { full: 34, partial: 40, count: 35 });
+  eq('notation 3440 @ 100', notation(3440, 100), '34T(100) + 1T(40)');
+  eq('exact cartons have no partial', split(900, 300), { full: 3, partial: 0, count: 3 });
+  eq('no pcs/carton = no cartons', split(500, ''), { full: 0, partial: 0, count: 0 });
+  eq('slip 0001955 creates 35 labels', recordCartons(slip).length, 35);
+  eq('slip 0001955 total qty', totals(slip).qty, 19790);
+  eq('label 35/35 is the partial carton of 40', (({ n, of, qty, isPartial }) => ({ n, of, qty, isPartial }))(recordCartons(slip)[34]), { n: 35, of: 35, qty: 40, isPartial: true });
+
+  // Packing list IDE0004000 — must match the paper exactly
+  const rows = packingRows(ship).map((r) => [r.cartonNo, r.qty, r.uoms, r.perUom, r.nw, r.gw, r.tnw, r.tgw]);
+  eq('packing list rows', rows, [
+    ['1-9', 8100, 9, 900, 8.95, 9.45, 80.55, 85.05],
+    ['10', 863, 1, 863, 2.6, 3.1, 2.6, 3.1],
+    ['11-14', 3600, 4, 900, 8.95, 9.45, 35.8, 37.8],
+    ['15', 446, 1, 446, 2.6, 3.1, 2.6, 3.1],
+  ]);
+  const t = totals(ship);
+  eq('packing list totals', { qty: t.qty, cartons: t.cartons, nw: t.nw, gw: t.gw, cbm: Math.round(t.cbm * 100) / 100 }, { qty: 13009, cartons: 15, nw: 121.55, gw: 129.05, cbm: 0.35 });
+  eq('shipping labels numbered 1…15 across lines', recordCartons(ship).map((c) => `${c.n}/${c.of}`).slice(8, 11), ['9/15', '10/15', '11/15']);
+
+  // Excel rows match the stock workbooks
+  const hb = movementBlocks(slip, DEFAULT_SETTINGS);
+  eq('handoff → PRINT sheet row', hb[0].rows[0], ['ILPLOV02150003', '9010780009', 'Printed box', 3440, 'piece', 'In', '2026-09-07', 'Nhận thành phẩm', 'WO10131']);
+  const sb = movementBlocks(ship, DEFAULT_SETTINGS);
+  eq('shipment → In-out detail rows (full + partial)', sb[0].rows.slice(0, 2), [
+    ['IDE0004000', '9090070468', 'ILPDIM13033191', -8100, 9, 'out', '2026-09-11', 'Sample Customer Co., Ltd.', ''],
+    ['IDE0004000', '9090070468', 'ILPDIM13033191', -863, 1, 'out', '2026-09-11', 'Sample Customer Co., Ltd.', ''],
+  ]);
+  const transfer = { id: 'TESTTRF0', type: 'transfer', docNo: 'TF000001', date: '2026-09-08', fromWh: 'PRINT', toWh: 'PACK', extRef: 'POVN-2600101', noteNo: 'pnk0002874', lines: [],
+    scans: [...Array(33)].map((_, i) => ({ cid: `S1955A0B-1-${i + 1}`, code: 'ILPLOV02150003', ref: '9010780009', desc: 'Printed box', qty: 100, unit: 'piece' })).concat([{ cid: 'S1955A0B-1-35', code: 'ILPLOV02150003', ref: '9010780009', desc: 'Printed box', qty: 34, unit: 'piece' }]) };
+  const tb = movementBlocks(transfer, DEFAULT_SETTINGS);
+  eq('transfer → PRINT out rows', tb[0].rows.map((r) => [r[3], r[5], r[7]]), [[-3300, 'out', 'transfer to pack'], [-34, 'out', 'transfer to pack']]);
+  eq('transfer → Trading in rows', tb[1].rows.map((r) => [r[0], r[3], r[4], r[5], r[7], r[8]]), [['POVN-2600101', 3300, 33, 'in', 'transfer from print', 'pnk0002874'], ['POVN-2600101', 34, 1, 'in', 'transfer from print', 'pnk0002874']]);
+
+  // Numbering
+  eq('next slip number', incrementDocNo('0001955'), '0001956');
+  eq('next invoice number', incrementDocNo('IDE0004000'), 'IDE0004001');
+  eq('next POVN number', incrementDocNo('POVN-2600087'), 'POVN-2600088');
+  eq('rollover keeps width', incrementDocNo('0009999'), '0010000');
+
+  // Work order formats seen in the stock report
+  eq('WO formats', ['10131', 'wo10141', 'WO 10134', 'WO10131'].map(fmtWO), ['WO10131', 'WO10141', 'WO10134', 'WO10131']);
+
+  // QR payloads round-trip through the scanner parser
+  const c = recordCartons(slip)[0];
+  eq('link payload parses', parseScan(cartonPayload(c, 'link')).cartonId, 'S1955A0B-1-1');
+  eq('id payload parses', parseScan(cartonPayload(c, 'id')).cartonId, 'S1955A0B-1-1');
+  eq('scanner-gun data payload parses', parseScan(cartonPayload(c, 'data')).cartonId, 'S1955A0B-1-1');
+  eq('lower-case typing parses', parseScan('s1955a0b-1-35').cartonId, 'S1955A0B-1-35');
+  eq('foreign QR is rejected', parseScan('https://example.com/promo'), null);
+
+  // Search normalisation (Vietnamese accents)
+  eq('accent-free search', norm('Nhận thành phẩm  Đơn'), 'nhan thanh pham don');
+
+  // Validation
+  eq('handoff needs received by', validate({ ...slip, receivedBy: '' }).length > 0, true);
+  eq('valid slip passes', validate(slip), []);
+
+  out.insertAdjacentHTML('afterbegin', `<h2 class="${failed ? 'fail' : 'pass'}">${failed ? `${failed} failed, ${passed} passed` : `All ${passed} tests passed`}</h2>`);
+  document.title = failed ? `✗ ${failed} failed` : `✓ ${passed} passed`;
+</script>
+</body>
+</html>
