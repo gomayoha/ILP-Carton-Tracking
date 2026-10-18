@@ -15,6 +15,11 @@ Read this before changing anything.
 3. Trading WH → customer: packing list / invoice (e.g. IDE0004000), pxk… delivery note. Pack re-packs into shipping cartons.
 "PUR WH" in the boss's first message is most likely a typo for "our WH" (not yet confirmed by Yohan).
 
+## Confirmed by the warehouse manager (Ms Ly, 18 Oct 2026)
+- Labels: the floor already uses two hand-filled forms — **IDEA-L-PRINT** (production carton: FSC boxes, Reference/Mã, Date, W/O, Quantity `4×25=100`, Gross.W, Net.W, Dimension in mm, Total `20T=2000`, Odd quantity `1T=72`) and **IDEA-L-PACK** (shipping carton: Reference No., Quantity(pc), Gross Weight(kg), Dimension cm, Shipping date, PO No., FSC boxes, blue QC stamp). Our labels copy both and add the QR (`print.js` `labelHTML`). New factory → buying a label printer is fine, no constraint.
+- When Pack ships, it **usually ships the same production cartons** (no repack). So a shipment *scans* cartons (they keep their label; no new labels) and only repacked goods are entered as lines with new labels. Scans carry weights/dims/PO for the packing list.
+- Handoff slip is written by **both production and the warehouse** (production also keeps its own notebook). Warehouse confirms receipt on the saved slip by scanning/counting cartons (`receipt` on the record; missing cartons are reported).
+
 ## Architecture
 - Static PWA, **no build step**. Preact + htm (`vendor/preact-htm.js`), all libraries vendored in `vendor/` (works offline, no CDN risk). Hosted on GitHub Pages.
 - Data: `src/db/firebase.js` (cloud) or `src/db/local.js` (DEMO, IndexedDB) — chosen by `FIREBASE_CONFIG` in `src/config.js`. Same interface.

@@ -15,7 +15,7 @@
 <p>Open this page from the local server (e.g. http://127.0.0.1:8765/tests/run.html). Every line should be green.</p>
 <div id="out"></div>
 <script type="module">
-  import { split, notation, packingRows, totals, movementBlocks, recordCartons, fmtWO, validate } from '../src/model.js';
+  import { split, notation, packingRows, totals, movementBlocks, recordCartons, fmtWO, validate, handNotation, perCartonNotation, receiptState, hasReceipt, scanGroups } from '../src/model.js';
   import { incrementDocNo, norm } from '../src/util.js';
   import { parseScan, cartonPayload } from '../src/qr.js';
   import { DEFAULT_SETTINGS } from '../src/store.js';
@@ -86,8 +86,33 @@
   // Search normalisation (Vietnamese accents)
   eq('accent-free search', norm('Nhận thành phẩm  Đơn'), 'nhan thanh pham don');
 
+  // Hand-written notation on the carton labels (photo of the IDEA-L-PRINT label, 6 Oct 2026)
+  eq('per carton 4×25=100', perCartonNotation(100, 25), '4×25=100');
+  eq('per carton without bundle', perCartonNotation(100, ''), '100');
+  eq('bundle that does not divide is ignored', perCartonNotation(100, 30), '100');
+  eq('total 20T=2000, odd 1T=72, grand 2072', handNotation(2072, 100), { total: '20T=2000', odd: '1T=72', grand: '2072' });
+  eq('label carries per-carton notation + line totals', (({ perCarton, lineNotation }) => ({ perCarton, lineNotation }))(recordCartons({ ...slip, lines: [{ ...slip.lines[0], qty: 2072, ppc: 100, bundle: 25 }] })[0]),
+    { perCarton: '4×25=100', lineNotation: { total: '20T=2000', odd: '1T=72', grand: '2072' } });
+
+  // Shipping production cartons as they are (scanned, no new labels)
+  const scanShip = { ...ship, lines: [], scanPo: { ILPLOV02150003: 'PONL-2600010' },
+    scans: [...Array(3)].map((_, i) => ({ cid: `S1955A0B-1-${i + 1}`, code: 'ILPLOV02150003', ref: '9010780009', desc: 'Printed box', qty: 100, unit: 'piece', nw: 4, gw: 4.2, l: 35, w: 25, h: 27 }))
+      .concat([{ cid: 'S1955A0B-1-35', code: 'ILPLOV02150003', ref: '9010780009', desc: 'Printed box', qty: 40, unit: 'piece', l: 35, w: 25, h: 27 }]) };
+  eq('scanned shipment creates no new labels', recordCartons(scanShip).length, 0);
+  eq('scanned shipment totals', (({ qty, cartons, gw }) => ({ qty, cartons, gw }))(totals(scanShip)), { qty: 340, cartons: 4, gw: 12.6 });
+  eq('scanned shipment packing rows', packingRows(scanShip).map((r) => [r.po, r.cartonNo, r.qty, r.perUom, r.gw]), [['PONL-2600010', '1-3', 300, 100, 4.2], ['PONL-2600010', '4', 40, 40, '']]);
+  eq('scanned shipment stock-out rows count each carton once', movementBlocks(scanShip, DEFAULT_SETTINGS)[0].rows.map((r) => [r[3], r[4]]), [[-300, 3], [-40, 1]]);
+  const mixed = { ...ship, scans: scanShip.scans };
+  eq('repacked cartons are numbered before scanned ones', recordCartons(mixed)[0].of, 15 + 4);
+
+  // Receipt confirmation by the warehouse
+  eq('slip waits for the warehouse', receiptState(slip).status, 'pending');
+  const ids = recordCartons(slip).map((c) => c.id);
+  eq('receipt with 2 cartons missing', (({ status, missing, counted }) => ({ status, missing, counted }))(receiptState({ ...slip, receipt: { by: 'Kho', at: 1, ids: ids.slice(2) } })), { status: 'received', missing: 2, counted: 33 });
+  eq('shipments need no receipt', hasReceipt(ship), false);
+
   // Validation
-  eq('handoff needs received by', validate({ ...slip, receivedBy: '' }).length > 0, true);
+  eq('handoff does not need received by (warehouse confirms it)', validate({ ...slip, receivedBy: '' }), []);
   eq('valid slip passes', validate(slip), []);
 
   out.insertAdjacentHTML('afterbegin', `<h2 class="${failed ? 'fail' : 'pass'}">${failed ? `${failed} failed, ${passed} passed` : `All ${passed} tests passed`}</h2>`);

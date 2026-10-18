@@ -63,6 +63,31 @@ export function notation(qty, ppc) {
   return parts.join(' + ');
 }
 
+// The way the floor writes it on the carton: "4×25=100" per carton, "20T=2000" total, "1T=72" odd carton.
+const plain = (n) => String(round(num(n), 3));
+
+export function perCartonNotation(ppc, bundle) {
+  ppc = num(ppc); bundle = num(bundle);
+  if (!(ppc > 0)) return '';
+  return bundle > 0 && bundle < ppc && Number.isInteger(round(ppc / bundle, 6)) ? `${round(ppc / bundle, 6)}×${plain(bundle)}=${plain(ppc)}` : plain(ppc);
+}
+
+export function handNotation(qty, ppc) {
+  const { full, partial } = split(qty, ppc);
+  return {
+    total: full ? `${full}T=${plain(full * num(ppc))}` : '',
+    odd: partial ? `1T=${plain(partial)}` : '',
+    grand: full || partial ? plain(num(qty)) : '',
+  };
+}
+
+export const FSC = [
+  { code: '100', label: 'FSC 100%' },
+  { code: 'mix', label: 'FSC Mix Credit' },
+  { code: 'recycled', label: 'FSC Recycled' },
+  { code: 'none', label: 'Non FSC' },
+];
+
 export const cartonId = (recId, ln, seq) => `${recId}-${ln}-${seq}`;
 
 // Cartons created by this record's own lines (production labels for handoff/transfer,
@@ -83,12 +108,17 @@ export function recordCartons(rec) {
         nw: isPartial ? num(line.pnw) : num(line.nw),
         gw: isPartial ? num(line.pgw) : num(line.gw),
         l: num(line.l), w: num(line.w), h: num(line.h),
+        fsc: line.fsc || '', perCarton: perCartonNotation(line.ppc, line.bundle),
+        lineQty: num(line.qty), lineNotation: handNotation(line.qty, line.ppc),
+        shipDate: rec.shipDate || rec.date,
       });
     }
   }
-  // Shipments number cartons across the whole packing list (1…N); others per line.
+  // Shipments number cartons across the whole packing list (1…N, repacked cartons first,
+  // then the scanned production cartons); others per line.
+  const scannedCount = rec.type === 'shipment' ? (rec.scans || []).length : 0;
   out.forEach((c, i) => {
-    if (rec.type === 'shipment') { c.n = i + 1; c.of = out.length; }
+    if (rec.type === 'shipment') { c.n = i + 1; c.of = out.length + scannedCount; }
     else { c.n = c.lineN; c.of = c.lineOf; }
     c.docNo = rec.docNo; c.date = rec.date; c.type = rec.type;
     c.extraRef = rec.type === 'shipment' ? c.po : fmtWO(c.wo);
@@ -106,8 +136,11 @@ export function findCartonInRecord(rec, cid) {
 export function scanGroups(rec) {
   const groups = new Map();
   for (const s of rec.scans || []) {
-    const k = `${s.code}|${s.qty}`;
-    if (!groups.has(k)) groups.set(k, { code: s.code, ref: s.ref, desc: s.desc, unit: s.unit, qtyPer: num(s.qty), cartons: 0, qty: 0, ids: [] });
+    const k = [s.code, s.qty, s.nw || '', s.gw || '', s.l || '', s.w || '', s.h || ''].join('|');
+    if (!groups.has(k)) {
+      groups.set(k, { code: s.code, ref: s.ref, desc: s.desc, unit: s.unit, qtyPer: num(s.qty), cartons: 0, qty: 0, ids: [],
+        nw: num(s.nw), gw: num(s.gw), l: num(s.l), w: num(s.w), h: num(s.h), po: (rec.scanPo || {})[s.code] || '' });
+    }
     const g = groups.get(k);
     g.cartons += 1; g.qty += num(s.qty); g.ids.push(s.cid);
   }
@@ -136,7 +169,9 @@ export function totals(rec) {
     units.add(line.unit || 'piece');
   }
   for (const s of rec.scans || []) {
-    if (rec.type === 'transfer') { qty += num(s.qty); cartons += 1; units.add(s.unit || 'piece'); }
+    if (rec.type === 'handoff') continue;
+    qty += num(s.qty); cartons += 1; units.add(s.unit || 'piece');
+    nw += num(s.nw); gw += num(s.gw); cbm += (num(s.l) * num(s.w) * num(s.h)) / 1e6;
   }
   return {
     qty: round(qty, 3), cartons, nw: round(nw, 2), gw: round(gw, 2), cbm: round(cbm, 3),
@@ -171,7 +206,33 @@ export function packingRows(rec) {
       rows.push({ ...base, cartonNo: '', qty: num(line.qty), uoms: '', perUom: '', nw: '', gw: '', tnw: '', tgw: '', cbm: '' });
     }
   }
+  // Production cartons shipped as they are (scanned) keep their own labels.
+  for (const g of rec.type === 'shipment' ? scanGroups(rec) : []) {
+    const from = n + 1; n += g.cartons;
+    const cbmOne = (g.l * g.w * g.h) / 1e6;
+    rows.push({ po: g.po, ref: g.ref, code: g.code, desc: g.desc, l: g.l, w: g.w, h: g.h, printDate: '', packDate: '', unit: g.unit, scanned: true,
+      cartonNo: g.cartons > 1 ? `${from}-${n}` : `${from}`, qty: g.qty, uoms: g.cartons, perUom: g.qtyPer,
+      nw: g.nw || '', gw: g.gw || '', tnw: g.nw ? round(g.cartons * g.nw, 2) : '', tgw: g.gw ? round(g.cartons * g.gw, 2) : '', cbm: cbmOne ? round(cbmOne * g.cartons, 3) : '' });
+  }
   return rows;
+}
+
+// ── Receipt confirmation (warehouse counts what production handed over) ─────
+
+export const hasReceipt = (rec) => rec.type === 'handoff' || rec.type === 'transfer';
+
+export function expectedCartonIds(rec) {
+  return [...recordCartons(rec).map((c) => c.id), ...(rec.scans || []).map((s) => s.cid)];
+}
+
+// { status: 'pending' | 'received', expected, counted, missing, by, at }
+export function receiptState(rec) {
+  const expected = expectedCartonIds(rec);
+  const r = rec.receipt;
+  if (!r) return { status: 'pending', expected: expected.length, counted: 0, missing: expected.length };
+  const got = new Set(r.ids || []);
+  const missing = expected.filter((id) => !got.has(id)).length;
+  return { status: 'received', expected: expected.length, counted: expected.length - missing, missing, by: r.by || '', at: r.at || 0 };
 }
 
 // ── Excel export rows ───────────────────────────────────────────────────────
@@ -248,7 +309,6 @@ export function validate(rec, { docNoTaken } = {}) {
   req(clean(rec.docNo), 'Document number is required.', 'Cần nhập số phiếu.');
   if (clean(rec.docNo) && docNoTaken) req(!docNoTaken, `Number ${rec.docNo} is already used by another ${typeShort(rec.type).toLowerCase()}.`, `Số ${rec.docNo} đã được dùng cho phiếu khác.`);
   req(rec.date, 'Date is required.', 'Cần nhập ngày.');
-  if (rec.type === 'handoff') req(clean(rec.receivedBy), 'Received by is required.', 'Cần nhập người nhận.');
   if (rec.type === 'shipment') req(clean(rec.customer), 'Customer is required.', 'Cần nhập khách hàng.');
   if (rec.type !== 'shipment') req(rec.fromWh !== rec.toWh, 'From and To must be different.', 'Nơi giao và nơi nhận phải khác nhau.');
   const lines = rec.lines || [];
