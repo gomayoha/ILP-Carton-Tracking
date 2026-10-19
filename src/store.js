@@ -235,6 +235,25 @@ export function voidRecord(id, reason) {
   saveRecord({ ...rec, status: 'void', voidReason: reason, voidedAt: Date.now() }, 'voided');
 }
 
+// Permanent delete. All details are wiped; only an empty marker is kept so that other devices
+// (which only listen for newer documents) also drop the record. The firestore rules need no change.
+const deletedIds = new Set();
+
+export function deleteRecord(id) {
+  const rec = state.records.get(id);
+  if (!rec) return;
+  deletedIds.add(id);
+  state.records.delete(id);
+  emit();
+  backend.saveRecord({ id, type: rec.type, status: 'void', deleted: true, rev: (rec.rev || 0) + 1, deletedAt: Date.now() })
+    .catch((e) => toast(`Sync error: ${e.message || e}`, 'bad', 6000));
+}
+
+// Other active records that scanned cartons belonging to this record (they would lose the carton details).
+export function recordsUsingCartonsOf(id) {
+  return [...state.records.values()].filter((r) => r.id !== id && r.status !== 'void' && (r.scans || []).some((s) => s.from === id || String(s.cid).startsWith(id + '-')));
+}
+
 export function restoreRecord(id) {
   const rec = getRecord(id);
   if (!rec) return;
@@ -306,6 +325,8 @@ export function saveDevice(partial) {
 const hooks = {
   onRecords(list) {
     for (const { id, data } of list) {
+      if (data.deleted) { state.records.delete(id); deletedIds.add(id); continue; }
+      if (deletedIds.has(id)) continue;
       const local = state.records.get(id);
       // Keep a newer local edit that has not reached the server yet.
       if (local && (local.rev || 0) > (data.rev || 0)) continue;
