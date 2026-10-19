@@ -8,7 +8,7 @@
 //  • Writes made offline are queued by Firestore and sent automatically when Wi-Fi returns.
 //
 // Collections:
-//   records/{id}          handoff slips, transfers, shipments (never deleted — voided instead)
+//   records/{id}          handoff slips, transfers, shipments (voided, or deleted = wiped to an empty `deleted: true` marker)
 //   items/{code}          item edits made in the app (override the imported master)
 //   itemChunks/{v}_{i}    imported item master, JSON text split into chunks
 //   meta/settings         shared settings (warehouses, number seeds, defaults)

@@ -2,10 +2,10 @@
 
 import { html, useState, useRef } from '../../vendor/preact-htm.js';
 import { tr } from '../i18n.js';
-import { useStore, getRecord, voidRecord, restoreRecord, markPrinted, toast, docNoTaken, confirmReceipt, clearReceipt } from '../store.js';
+import { useStore, getRecord, voidRecord, restoreRecord, deleteRecord, recordsUsingCartonsOf, markPrinted, toast, docNoTaken, confirmReceipt, clearReceipt } from '../store.js';
 import { Icon, Btn, Chip, PageHead, Confirm, Empty, Modal, Field, Input } from '../components.js';
 import { typeName, totals, recordCartons, scanGroups, notation, unitLabel, fmtWO, packingRows, movementBlocks, warehouse, hasReceipt, receiptState, expectedCartonIds } from '../model.js';
-import { fmtDate, fmtDateTime, fmtNum, fmtDec, num, toTSV, copyText } from '../util.js';
+import { fmtDate, fmtDateTime, fmtNum, fmtDec, num, toTSV, copyText, go } from '../util.js';
 import { printLabels, printSlip, printPackingList, labelHTML } from '../print.js';
 import { parseScan } from '../qr.js';
 import { Scanner, feedback } from './scanner.js';
@@ -125,6 +125,7 @@ export function RecordView({ id }) {
       ${voided
         ? html`<${Btn} icon="undo" onClick=${() => restoreRecord(rec.id)}>${tr('Restore', 'Khôi phục')}</${Btn}>`
         : html`<${Btn} kind="danger-ghost" icon="ban" onClick=${() => setConfirm('void')}>${tr('Void', 'Hủy phiếu')}</${Btn}>`}
+      <${Btn} kind="danger-ghost" icon="trash" onClick=${() => setConfirm('delete')}>${tr('Delete permanently', 'Xóa hẳn')}</${Btn}>
     </div>
 
     <div class="kpi-strip">
@@ -187,6 +188,9 @@ export function RecordView({ id }) {
       </div>
     </div>
 
+    ${confirm === 'delete' && html`<${Confirm} title=${tr('Delete this record permanently?', 'Xóa hẳn chứng từ này?')} danger confirmLabel=${tr('Delete permanently', 'Xóa hẳn')}
+      message=${tr(`${rec.docNo} will be erased completely and cannot be restored. Use Void instead if you want to keep the history.`, `${rec.docNo} sẽ bị xóa hoàn toàn và không thể khôi phục. Nếu muốn giữ lịch sử, hãy dùng Hủy phiếu.`) + (recordsUsingCartonsOf(rec.id).length ? ' ' + tr(`Warning: ${recordsUsingCartonsOf(rec.id).map((r) => r.docNo).join(', ')} scanned cartons from this record and will lose their carton details.`, `Cảnh báo: ${recordsUsingCartonsOf(rec.id).map((r) => r.docNo).join(', ')} đã quét thùng của chứng từ này và sẽ mất thông tin thùng.`) : '')}
+      onConfirm=${() => { deleteRecord(rec.id); toast(tr('Record deleted.', 'Đã xóa chứng từ.')); go('/records'); }} onClose=${() => setConfirm(null)} />`}
     ${confirm === 'receipt' && html`<${ReceiptModal} rec=${rec} onClose=${() => setConfirm(null)} />`}
     ${confirm === 'void' && html`<${Confirm} title=${tr('Void this record?', 'Hủy chứng từ này?')} danger withReason confirmLabel=${tr('Void record', 'Hủy chứng từ')}
       message=${tr('The record stays in the system marked VOID (nothing is deleted). Its carton labels will show as voided when scanned. You can restore it later.', 'Chứng từ vẫn được giữ lại và đánh dấu ĐÃ HỦY (không xóa). Nhãn thùng sẽ báo đã hủy khi quét. Có thể khôi phục sau.')}

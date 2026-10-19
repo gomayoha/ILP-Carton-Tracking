@@ -8,7 +8,8 @@ rules_version = '2';
 //   LOGIN MODE — only staff signed in with an account you created in Firebase → Authentication.
 //                Use together with REQUIRE_LOGIN = true in src/config.js.
 //
-// The app never deletes records (they are voided instead), so deleting is blocked for everyone.
+// Records are voided, or "deleted" by overwriting them with an empty marker (deleted: true) so every
+// device sees it. Real document deletes stay blocked for everyone.
 
 service cloud.firestore {
   match /databases/{database}/documents {
