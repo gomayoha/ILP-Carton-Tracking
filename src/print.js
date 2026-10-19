@@ -3,13 +3,14 @@
 
 import { tr, bi } from './i18n.js';
 import { qrSvg, cartonPayload, recordPayload } from './qr.js';
-import { recordCartons, packingRows, totals, notation, fmtWO, unitLabel, warehouse, scanGroups, typeName } from './model.js';
+import { recordCartons, packingRows, totals, notation, fmtWO, unitLabel, warehouse, scanGroups, typeName, FSC } from './model.js';
 import { fmtDate, fmtNum, fmtDec, num, round } from './util.js';
 import { state } from './store.js';
 
 export const LABEL_PRESETS = {
   'thermal-100x70': { w: 100, h: 70, en: 'Thermal roll · 100 × 70 mm', vi: 'Cuộn nhiệt · 100 × 70 mm' },
   'thermal-100x50': { w: 100, h: 50, en: 'Thermal roll · 100 × 50 mm', vi: 'Cuộn nhiệt · 100 × 50 mm' },
+  'thermal-100x100': { w: 100, h: 100, en: 'Thermal roll · 100 × 100 mm', vi: 'Cuộn nhiệt · 100 × 100 mm' },
   'thermal-100x150': { w: 100, h: 150, en: 'Thermal roll · 100 × 150 mm (4×6")', vi: 'Cuộn nhiệt · 100 × 150 mm (4×6")' },
   'thermal-75x50': { w: 75, h: 50, en: 'Thermal roll · 75 × 50 mm', vi: 'Cuộn nhiệt · 75 × 50 mm' },
   'a4-8': { w: 105, h: 74.25, cols: 2, rows: 4, en: 'A4 sticker sheet · 8 per page (105 × 74 mm)', vi: 'Giấy decal A4 · 8 nhãn/trang (105 × 74 mm)' },
@@ -26,43 +27,69 @@ function whName(code) {
 }
 
 // ── Carton label ────────────────────────────────────────────────────────────
+// Two layouts that copy the labels the floor already uses:
+//   print → "IDEA - L - PRINT" production carton label (handoff / transfer)
+//   pack  → "IDEA - L - PACK" shipping carton label (shipment)
+// The QR code is added on the right; everything else follows the paper forms.
+
+const LABEL_REF = { print: { w: 100, h: 100 }, pack: { w: 100, h: 62 } };
+const MON = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+const shipDate = (iso) => { const m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}-${MON[+m[2] - 1]}-${m[1]}` : ''; };
+const dimText = (l, w, h, k, sep) => (num(l) > 0 || num(w) > 0 || num(h) > 0) ? [l, w, h].map((v) => round(num(v) * k, 1)).join(sep) : '';
+const kg = (v) => (num(v) > 0 ? String(round(num(v), 2)) : '');
+
+function fscRow(fsc, labels) {
+  return `<div class="lb-fsc">${FSC.map((f, i) => `<span><i class="${fsc === f.code ? 'on' : ''}">${fsc === f.code ? '✓' : ''}</i>${labels[i]}</span>`).join('')}</div>`;
+}
 
 export function labelHTML(carton, rec, preset, opts = {}) {
   const p = LABEL_PRESETS[preset] || LABEL_PRESETS['thermal-100x70'];
-  const tall = p.h > p.w * 1.2;
-  const s = tall ? Math.min(p.w / 80, p.h / 125) : Math.min(p.w / 100, p.h / 70);
+  const pack = rec.type === 'shipment';
+  const ref = LABEL_REF[pack ? 'pack' : 'print'];
+  const s = Math.min(p.w / ref.w, p.h / ref.h);
   const qr = qrSvg(cartonPayload(carton, opts.qrMode || 'link'), { ecc: 'M' });
-  const logo = opts.showLogo !== false ? `<img class="lb-logo" src="${LOGO}" alt="">` : '<span class="lb-brand">IDEA L PACK</span>';
+  const logo = opts.showLogo !== false ? `<img class="lb-logo" src="${LOGO}" alt="">` : '<span class="lb-logo"></span>';
   const n = String(carton.n).padStart(String(carton.of).length, '0');
-  const ship = rec.type === 'shipment';
-  const row = (k, v, cls = '') => v || v === 0 ? `<div class="lb-row ${cls}"><span class="lb-k">${k}</span><span class="lb-v">${esc(v)}</span></div>` : '';
-  const qtyText = `${fmtNum(carton.qty, carton.qty % 1 ? 2 : 0)} ${unitLabelPrint(carton.unit)}`;
-  const fields = ship ? [
-    row('PO', carton.po),
-    row('Cust. code', carton.ref, 'strong'),
-    row('Item', carton.code),
-    row('Desc.', carton.desc, 'desc'),
-    `<div class="lb-qty"><span class="lb-k">Qty / ctn</span><b>${esc(qtyText)}</b></div>`,
-    row('N.W / G.W', carton.nw || carton.gw ? `${fmtNum(carton.nw, 2)} / ${fmtNum(carton.gw, 2)} kg` : ''),
-    row('Invoice', rec.docNo),
-    row('Ship to', rec.shipTo || rec.customer, 'desc'),
-  ] : [
-    row('Mã hàng · Item', carton.code, 'strong'),
-    row('Mã KH · Cust. ref', carton.ref, 'strong'),
-    row('Tên · Desc.', carton.desc, 'desc'),
-    `<div class="lb-qty"><span class="lb-k">SL · Qty</span><b>${esc(qtyText)}</b>${carton.isPartial ? '<em>THÙNG LẺ · PARTIAL</em>' : ''}</div>`,
-    row('Lệnh SX · WO', fmtWO(carton.wo)),
-    row(rec.type === 'handoff' ? 'Số phiếu · Slip' : 'Số · Doc', rec.docNo),
-    row('Ngày · Date', `${fmtDate(rec.date)}  ${whName(rec.fromWh)} → ${whName(rec.toWh)}`),
-  ];
-  return `<div class="label ${tall ? 'tall' : 'wide'}" style="--lw:${p.w}mm;--lh:${p.h}mm;--s:${s}">
-    <div class="lb-head">${logo}<div class="lb-ctn"><span>${ship ? 'CARTON' : 'THÙNG · CARTON'}</span><b>${n}<i>/${carton.of}</i></b></div></div>
-    <div class="lb-body"><div class="lb-qr">${qr}</div><div class="lb-fields">${fields.join('')}</div></div>
-    <div class="lb-foot"><span>${esc(carton.id)}</span><span>${ship ? 'MADE IN ' + esc(rec.origin || 'VIETNAM') : esc(typeShortPrint(rec.type))}</span></div>
+  const row = (k, v, cls = '') => `<div class="lb-row ${cls}"><span class="lb-k">${k}</span><span class="lb-v">${esc(v)}</span></div>`;
+  const qtyOne = carton.isPartial ? String(carton.qty) : (carton.perCarton || String(carton.qty));
+  const head = `<div class="lb-head">${logo}<b class="lb-title">${pack ? 'IDEA - L - PACK' : 'IDEA - L - PRINT'}</b><div class="lb-ctn"><b>${n}<i>/${carton.of}</i></b></div></div>`;
+  let rows, fsc, foot;
+  if (pack) {
+    rows = [
+      row('Reference. No.', carton.ref || carton.code, 'big'),
+      row('Quantity(pc)', qtyOne, 'big'),
+      row('Gross Weight(kg)', kg(carton.gw)),
+      row('Dimension', dimText(carton.l, carton.w, carton.h, 1, '*')),
+      row('SHIPPING DATE', shipDate(carton.shipDate), 'big'),
+      row('PO No.', carton.po),
+    ].join('');
+    fsc = fscRow(carton.fsc, ['FSC 100%', 'FSC mix credit', 'FSC recycled', 'Non FSC']);
+    foot = `<span>${esc(carton.id)}</span><span>MADE IN ${esc(rec.origin || 'VIETNAM')}</span>`;
+  } else {
+    const hn = carton.lineNotation || {};
+    const wo = fmtWO(carton.wo).replace(/^WO/, '');
+    rows = [
+      row('REFERENCE (MÃ):', [carton.code, carton.ref].filter(Boolean).join(' / '), 'ref'),
+      `<div class="lb-row two"><span class="lb-k">DATE (NGÀY):</span><span class="lb-v">${esc(fmtDate(rec.date))}</span><span class="lb-k w">W/O:</span><span class="lb-v">${esc(wo)}</span></div>`,
+      `<div class="lb-row big"><span class="lb-k">QUANTITY (SỐ LƯỢNG):</span><span class="lb-v">${esc(qtyOne)}${carton.isPartial ? ' <em>LẺ · PARTIAL</em>' : ''}</span></div>`,
+      row('GROSS.W (KL TỔNG):', kg(carton.gw)),
+      row('NET.W (KL TỊNH):', kg(carton.nw)),
+      row('DIMENSION (KTT):', dimText(carton.l, carton.w, carton.h, 10, ' × ')),
+      row('TOTAL (TỔNG):', hn.total || ''),
+      row('ODD QUANTITY (SL LẺ):', hn.odd ? `${hn.odd}   → ${hn.grand}` : ''),
+    ].join('');
+    fsc = fscRow(carton.fsc, ['100% FSC', 'FSC Mix Credit', 'FSC Recycled', 'Non FSC']);
+    foot = `<span>${esc(carton.id)}</span><span>${esc(rec.docNo || '')} · ${esc(typeShortPrint(rec.type))}</span>`;
+  }
+  return `<div class="label ${pack ? 'pack' : 'print'}" style="--lw:${p.w}mm;--lh:${p.h}mm;--s:${s}">
+    ${head}
+    ${fsc}
+    <div class="lb-body"><div class="lb-rows">${rows}</div>
+      <div class="lb-side"><div class="lb-qr">${qr}</div>${pack ? '<div class="lb-qc">QC</div>' : ''}</div></div>
+    <div class="lb-foot">${foot}</div>
   </div>`;
 }
 
-const unitLabelPrint = (u) => ({ piece: 'PCS', box: 'BOX', set: 'SET', roll: 'ROLL', sheet: 'SHEET', ream: 'REAM', pair: 'PAIR', kg: 'KG' }[u] || String(u || '').toUpperCase());
 const typeShortPrint = (t) => ({ handoff: 'PRO → WH', transfer: 'TRANSFER', shipment: 'SHIPMENT' }[t] || '');
 
 export function labelsPage(cartons, rec, preset, opts) {

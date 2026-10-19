@@ -1,17 +1,58 @@
 // A saved slip / transfer / shipment: summary, labels, printouts, Excel, edit, void.
 
-import { html, useState } from '../../vendor/preact-htm.js';
+import { html, useState, useRef } from '../../vendor/preact-htm.js';
 import { tr } from '../i18n.js';
-import { useStore, getRecord, voidRecord, restoreRecord, markPrinted, toast, docNoTaken } from '../store.js';
-import { Icon, Btn, Chip, PageHead, Confirm, Empty } from '../components.js';
-import { typeName, totals, recordCartons, scanGroups, notation, unitLabel, fmtWO, packingRows, movementBlocks, warehouse } from '../model.js';
+import { useStore, getRecord, voidRecord, restoreRecord, markPrinted, toast, docNoTaken, confirmReceipt, clearReceipt } from '../store.js';
+import { Icon, Btn, Chip, PageHead, Confirm, Empty, Modal, Field, Input } from '../components.js';
+import { typeName, totals, recordCartons, scanGroups, notation, unitLabel, fmtWO, packingRows, movementBlocks, warehouse, hasReceipt, receiptState, expectedCartonIds } from '../model.js';
 import { fmtDate, fmtDateTime, fmtNum, fmtDec, num, toTSV, copyText } from '../util.js';
 import { printLabels, printSlip, printPackingList, labelHTML } from '../print.js';
+import { parseScan } from '../qr.js';
+import { Scanner, feedback } from './scanner.js';
 import { downloadPackingList, downloadStockRows, downloadLabelList } from '../excel.js';
 
 function LabelPreview({ rec, carton, device }) {
   return html`<div class="label-preview" dangerouslySetInnerHTML=${{ __html: labelHTML(carton, rec, device.labelPreset, { qrMode: device.qrMode, showLogo: device.showLogo }) }}></div>`;
 }
+
+// The receiving warehouse counts the cartons against the slip. Scan each label, or tick "all received".
+function ReceiptModal({ rec, onClose }) {
+  const expected = expectedCartonIds(rec);
+  const [ids, setIds] = useState(() => new Set(rec.receipt?.ids || []));
+  const idsRef = useRef(ids);
+  const [by, setBy] = useState(rec.receipt?.by || rec.receivedBy || '');
+  const [note, setNote] = useState(rec.receipt?.note || '');
+  const [log, setLog] = useState([]);
+  const add = (msg, kind) => setLog((l) => [{ msg, kind }, ...l].slice(0, 20));
+  const mark = (cid) => { const n = new Set(idsRef.current); n.add(cid); idsRef.current = n; setIds(n); };
+
+  const onCode = (text) => {
+    const p = parseScan(text);
+    if (!p || !p.cartonId) { feedback(false); add(tr('Not a carton label', 'Không phải nhãn thùng'), 'bad'); return; }
+    if (!expected.includes(p.cartonId)) { feedback(false); add(`${p.cartonId} — ${tr('not on this slip', 'không có trong phiếu này')}`, 'bad'); return; }
+    if (idsRef.current.has(p.cartonId)) { feedback(false); add(`${p.cartonId} — ${tr('already counted', 'đã đếm rồi')}`, 'warn'); return; }
+    mark(p.cartonId); feedback(true); add(`${p.cartonId} — ${tr('counted', 'đã đếm')}`, 'good');
+  };
+  const missing = expected.length - ids.size;
+  const confirm = () => {
+    if (!clean_(by)) { toast(tr('Enter who received the goods.', 'Nhập tên người nhận hàng.'), 'bad'); return; }
+    confirmReceipt(rec.id, { by, ids: [...ids], note });
+    toast(missing ? tr(`Receipt confirmed — ${missing} carton(s) not counted.`, `Đã xác nhận — còn ${missing} thùng chưa đếm.`) : tr('Receipt confirmed.', 'Đã xác nhận nhận hàng.'), missing ? 'warn' : 'ok');
+    onClose();
+  };
+  return html`<${Modal} title=${tr('Confirm receipt', 'Xác nhận nhận hàng')} onClose=${onClose} wide footer=${html`<span class="muted">${ids.size} / ${expected.length} ${tr('cartons counted', 'thùng đã đếm')}</span><${Btn} onClick=${onClose}>${tr('Cancel', 'Hủy')}</${Btn}><${Btn} kind="primary" icon="check" onClick=${confirm}>${tr('Confirm receipt', 'Xác nhận')}</${Btn}>`}>
+    <div class="form-grid">
+      <${Field} label=${tr('Received by', 'Người nhận')} required><${Input} value=${by} onInput=${setBy} /></${Field}>
+      <${Field} label=${tr('Note (e.g. shortage)', 'Ghi chú (vd: thiếu hàng)')}><${Input} value=${note} onInput=${setNote} /></${Field}>
+    </div>
+    <div class="scan-layout in-modal">
+      <${Scanner} onCode=${onCode} compact />
+      <ul class="scan-log">${log.length ? log.map((l) => html`<li class=${l.kind}><${Icon} name=${l.kind === 'good' ? 'check' : 'alert'} />${l.msg}</li>`) : html`<li class="muted">${tr('Scan each carton you receive. Cartons not scanned are reported as missing.', 'Quét từng thùng nhận được. Thùng chưa quét sẽ được ghi là thiếu.')}</li>`}</ul>
+    </div>
+    <${Btn} small onClick=${() => { const n = new Set(expected); idsRef.current = n; setIds(n); }}>${tr('Mark all received', 'Đánh dấu nhận đủ')}</${Btn}>
+  </${Modal}>`;
+}
+const clean_ = (v) => String(v ?? '').trim();
 
 export function RecordView({ id }) {
   const s = useStore();
@@ -31,6 +72,7 @@ export function RecordView({ id }) {
   const isShip = rec.type === 'shipment';
   const voided = rec.status === 'void';
   const wh = (code) => { const w = warehouse(s.settings, code); return tr(w.name, w.vi); };
+  const rc = hasReceipt(rec) ? receiptState(rec) : null;
   const dupe = !voided && docNoTaken(rec.type, rec.docNo, rec.id);
 
   const doPrintLabels = (list) => {
@@ -62,11 +104,16 @@ export function RecordView({ id }) {
       sub=${html`${fmtDate(rec.date)} · ${isShip ? html`${rec.customer}${rec.shipTo ? ' → ' + rec.shipTo : ''}` : html`${wh(rec.fromWh)} → ${wh(rec.toWh)}`}`}
       actions=${html`
         ${voided ? html`<${Chip} kind="bad" icon="ban">${tr('Voided', 'Đã hủy')}</${Chip}>` : html`<${Chip} kind="good" icon="check">${tr('Active', 'Hiệu lực')}</${Chip}>`}
+        ${rc && !voided && (rc.status === 'received'
+          ? html`<${Chip} kind=${rc.missing ? 'warn' : 'good'} icon="check">${rc.missing ? tr(`Received · ${rc.missing} missing`, `Đã nhận · thiếu ${rc.missing}`) : tr('Received', 'Đã nhận')}</${Chip}>`
+          : html`<${Chip} kind="info" icon="inbox">${tr('Awaiting warehouse receipt', 'Chờ kho xác nhận')}</${Chip}>`)}
         ${dupe && html`<${Chip} kind="warn" icon="alert">${tr('Duplicate number', 'Trùng số')}</${Chip}>`}`} />
 
+    ${rc && rc.status === 'received' && html`<div class=${'banner ' + (rc.missing ? 'warn' : 'info')}><${Icon} name="check" /><div>${tr('Received by', 'Người nhận')} <b>${rc.by}</b> · ${fmtDateTime(rc.at)} — ${rc.counted} / ${rc.expected} ${tr('cartons counted', 'thùng đã đếm')}${rc.missing ? '. ' + tr('Missing cartons need a follow-up with production.', 'Thùng thiếu cần làm rõ với bộ phận sản xuất.') : ''}${rec.receipt?.note ? ' · ' + rec.receipt.note : ''} <button class="link small" onClick=${() => { clearReceipt(rec.id); }}>${tr('Undo receipt', 'Hủy xác nhận')}</button></div></div>`}
     ${voided && html`<div class="banner bad"><${Icon} name="ban" /><div><b>${tr('Voided', 'Đã hủy')}</b> ${rec.voidedAt ? fmtDateTime(rec.voidedAt) : ''} — ${rec.voidReason}. ${tr('Its labels will show as voided when scanned.', 'Nhãn của chứng từ này sẽ báo đã hủy khi quét.')}</div></div>`}
 
     <div class="toolbar">
+      ${rc && !voided && html`<${Btn} kind=${rc.status === 'received' ? '' : 'primary'} icon="scan" onClick=${() => setConfirm('receipt')}>${rc.status === 'received' ? tr('Recount / edit receipt', 'Đếm lại / sửa xác nhận') : tr('Confirm receipt (warehouse)', 'Xác nhận nhận hàng (kho)')}</${Btn}>`}
       ${cartons.length > 0 && html`<${Btn} kind="primary" icon="printer" onClick=${() => doPrintLabels(cartons)} disabled=${voided}>${tr('Print all labels', 'In tất cả nhãn')} (${cartons.length})</${Btn}>`}
       <${Btn} icon="file" onClick=${doPrintDoc}>${isShip ? tr('Print packing list', 'In packing list') : tr('Print slip', 'In phiếu')}</${Btn}>
       ${isShip && html`<${Btn} icon="download" onClick=${() => downloadPackingList(rec)}>${tr('Packing list .xlsx', 'Packing list .xlsx')}</${Btn}>`}
@@ -136,10 +183,11 @@ export function RecordView({ id }) {
     <div class="grid-2 block">
       ${rec.note && html`<div class="card soft"><h4>${tr('Note', 'Ghi chú')}</h4><p class="prose">${rec.note}</p></div>`}
       <div class="card soft"><h4>${tr('History', 'Lịch sử')}</h4>
-        <ul class="history">${(rec.history || []).slice().reverse().map((h) => html`<li><b>${({ created: tr('Created', 'Tạo'), edited: tr('Edited', 'Sửa'), voided: tr('Voided', 'Hủy'), restored: tr('Restored', 'Khôi phục'), printed: tr('Printed', 'In') })[h.action] || h.action}</b> · ${fmtDateTime(h.at)}${h.device ? ' · ' + h.device : ''}</li>`)}</ul>
+        <ul class="history">${(rec.history || []).slice().reverse().map((h) => html`<li><b>${({ created: tr('Created', 'Tạo'), edited: tr('Edited', 'Sửa'), voided: tr('Voided', 'Hủy'), restored: tr('Restored', 'Khôi phục'), printed: tr('Printed', 'In'), received: tr('Receipt confirmed', 'Xác nhận nhận hàng'), 'receipt-cleared': tr('Receipt undone', 'Hủy xác nhận nhận hàng') })[h.action] || h.action}</b> · ${fmtDateTime(h.at)}${h.device ? ' · ' + h.device : ''}</li>`)}</ul>
       </div>
     </div>
 
+    ${confirm === 'receipt' && html`<${ReceiptModal} rec=${rec} onClose=${() => setConfirm(null)} />`}
     ${confirm === 'void' && html`<${Confirm} title=${tr('Void this record?', 'Hủy chứng từ này?')} danger withReason confirmLabel=${tr('Void record', 'Hủy chứng từ')}
       message=${tr('The record stays in the system marked VOID (nothing is deleted). Its carton labels will show as voided when scanned. You can restore it later.', 'Chứng từ vẫn được giữ lại và đánh dấu ĐÃ HỦY (không xóa). Nhãn thùng sẽ báo đã hủy khi quét. Có thể khôi phục sau.')}
       onConfirm=${(reason) => { voidRecord(rec.id, reason); toast(tr('Record voided.', 'Đã hủy chứng từ.')); }} onClose=${() => setConfirm(null)} />`}

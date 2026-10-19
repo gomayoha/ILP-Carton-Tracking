@@ -151,7 +151,8 @@ function learnFromRecord(rec) {
     const take = (f, v) => { if (v !== '' && v !== undefined && num(v) > 0 && num(it[f]) !== num(v)) patch[f] = num(v); };
     const takeText = (f, v) => { if (clean(v) && clean(it[f]) !== clean(v)) patch[f] = clean(v); };
     take('ppc', line.ppc);
-    if (rec.type === 'shipment') { take('nw', line.nw); take('gw', line.gw); take('l', line.l); take('w', line.w); take('h', line.h); takeText('cust', rec.customer); }
+    take('nw', line.nw); take('gw', line.gw); take('l', line.l); take('w', line.w); take('h', line.h);
+    if (rec.type === 'shipment') takeText('cust', rec.customer);
     if (!it.desc) takeText('desc', line.desc);
     if (!it.ref) takeText('ref', line.ref);
     if (Object.keys(patch).length) saveItem({ ...(overrides.get(code) || { code }), ...patch });
@@ -201,7 +202,7 @@ export function newRecord(type) {
   if (type === 'transfer') Object.assign(rec, { extRef: '', noteNo: '' });
   if (type === 'shipment') Object.assign(rec, {
     customer: '', shipTo: '', contact: '', salesperson: '', noteNo: '',
-    shippingMark: state.settings.shippingMark || 'IDEA L PACK', origin: state.settings.origin || 'VIETNAM',
+    shipDate: today(), shippingMark: state.settings.shippingMark || 'IDEA L PACK', origin: state.settings.origin || 'VIETNAM',
   });
   return rec;
 }
@@ -352,3 +353,19 @@ export async function init() {
 export const signIn = (email, pw) => backend.signIn(email, pw);
 export const signOut = () => backend.signOut();
 export const resetDemo = async () => { if (backend.resetDemo) { await backend.resetDemo(); location.reload(); } };
+
+// ── Receipt confirmation ────────────────────────────────────────────────────
+
+// The receiving warehouse confirms what it counted against a handoff / transfer.
+export function confirmReceipt(id, { by, ids, note }) {
+  const rec = getRecord(id);
+  if (!rec) return null;
+  const receipt = { by: clean(by), at: Date.now(), ids: [...ids], note: clean(note) };
+  return saveRecord({ ...rec, receipt, receivedBy: rec.receivedBy || clean(by) }, 'received');
+}
+
+export function clearReceipt(id) {
+  const rec = getRecord(id);
+  if (!rec) return null;
+  return saveRecord({ ...rec, receipt: null }, 'receipt-cleared');
+}
