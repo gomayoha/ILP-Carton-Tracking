@@ -8,3 +8,6 @@ reference/
 # Local tooling
 .claude/
 .DS_Store
+
+# Presentation PDFs (shared by email, not part of the app)
+*.pdf
