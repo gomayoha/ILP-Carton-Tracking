@@ -140,7 +140,7 @@ export async function downloadStockRows(records, settings, label) {
   const blocks = stockRows(records, settings);
   for (const b of blocks) {
     const dateCol = b.layout === 'trading' ? 6 : 6;
-    const widths = b.layout === 'trading' ? [20, 22, 18, 12, 9, 8, 12, 22, 20] : [18, 22, 26, 12, 8, 8, 12, 22, 14];
+    const widths = b.layout === 'trading' ? [20, 22, 18, 12, 9, 8, 12, 22, 20] : [18, 22, 14, 12, 8, 8, 12, 22, 14, 14];
     X.utils.book_append_sheet(wb, sheetFrom(X, [b.header, ...b.rows], widths, [dateCol]), safeName(`${b.wh.code} (${b.layout === 'trading' ? 'In-out detail' : 'PRINT'})`));
   }
   if (!blocks.length) X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet([['No movements in this selection']]), 'Empty');

@@ -136,7 +136,9 @@ export function slipHTML(rec) {
     </tr>`);
   const minRows = Math.max(0, 8 - lines.length - scanned.length);
   const blank = Array.from({ length: minRows }, () => `<tr class="blank"><td></td><td></td><td></td>${isHandoff ? '<td></td>' : ''}<td></td><td></td><td></td>${isHandoff ? '<td></td>' : ''}</tr>`);
-  const extra = isHandoff ? '' : `<div><span>PO / POVN</span><b>${esc(rec.extRef || '—')}</b></div><div><span>Số PNK / Receipt note</span><b>${esc(rec.noteNo || '—')}</b></div>`;
+  const extra = isHandoff
+    ? (rec.noteNo ? `<div><span>Số PNK / Receipt note</span><b>${esc(rec.noteNo)}</b></div>` : '')
+    : `<div><span>PO / POVN</span><b>${esc(rec.extRef || '—')}</b></div><div><span>Số PXK / Delivery note</span><b>${esc(rec.outNoteNo || '—')}</b></div><div><span>Số PNK / Receipt note</span><b>${esc(rec.noteNo || '—')}</b></div>`;
   return `<div class="doc slip">
     <header class="doc-head">
       <img src="${LOGO}" alt="Idea L Pack" class="doc-logo">

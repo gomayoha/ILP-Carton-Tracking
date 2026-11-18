@@ -31,4 +31,4 @@ export const REQUIRE_LOGIN = false;
 //    used when labels are printed from a test copy (e.g. localhost).
 export const APP_URL = 'https://gomayoha.github.io/ILP-Carton-Tracking/';
 
-export const APP_VERSION = '1.0.0';
+export const APP_VERSION = '1.0.1';

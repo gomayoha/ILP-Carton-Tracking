@@ -54,16 +54,17 @@
 
   // Excel rows match the stock workbooks
   const hb = movementBlocks(slip, DEFAULT_SETTINGS);
-  eq('handoff → PRINT sheet row', hb[0].rows[0], ['ILPLOV02150003', '9010780009', 'Printed box', 3440, 'piece', 'In', '2026-09-07', 'Nhận thành phẩm', 'WO10131']);
+  eq('handoff → PRINT sheet row', hb[0].rows[0], ['ILPLOV02150003', '9010780009', '', 3440, 'piece', 'In', '2026-09-07', 'Nhận thành phẩm', 'WO10131', '']);
+  eq('handoff PNK goes to column J', movementBlocks({ ...slip, noteNo: 'PNK0003012' }, DEFAULT_SETTINGS)[0].rows[0][9], 'PNK0003012');
   const sb = movementBlocks(ship, DEFAULT_SETTINGS);
   eq('shipment → In-out detail rows (full + partial)', sb[0].rows.slice(0, 2), [
     ['IDE0004000', '9090070468', 'ILPDIM13033191', -8100, 9, 'out', '2026-09-11', 'Sample Customer Co., Ltd.', ''],
     ['IDE0004000', '9090070468', 'ILPDIM13033191', -863, 1, 'out', '2026-09-11', 'Sample Customer Co., Ltd.', ''],
   ]);
-  const transfer = { id: 'TESTTRF0', type: 'transfer', docNo: 'TF000001', date: '2026-09-08', fromWh: 'PRINT', toWh: 'PACK', extRef: 'POVN-2600101', noteNo: 'pnk0002874', lines: [],
+  const transfer = { id: 'TESTTRF0', type: 'transfer', docNo: 'TF000001', date: '2026-09-08', fromWh: 'PRINT', toWh: 'PACK', extRef: 'POVN-2600101', outNoteNo: 'pxk0006343', noteNo: 'pnk0002874', lines: [],
     scans: [...Array(33)].map((_, i) => ({ cid: `S1955A0B-1-${i + 1}`, code: 'ILPLOV02150003', ref: '9010780009', desc: 'Printed box', qty: 100, unit: 'piece' })).concat([{ cid: 'S1955A0B-1-35', code: 'ILPLOV02150003', ref: '9010780009', desc: 'Printed box', qty: 34, unit: 'piece' }]) };
   const tb = movementBlocks(transfer, DEFAULT_SETTINGS);
-  eq('transfer → PRINT out rows', tb[0].rows.map((r) => [r[3], r[5], r[7]]), [[-3300, 'out', 'transfer to pack'], [-34, 'out', 'transfer to pack']]);
+  eq('transfer → PRINT out rows', tb[0].rows.map((r) => [r[3], r[5], r[7], r[9]]), [[-3300, 'out', 'transfer to pack', 'pxk0006343'], [-34, 'out', 'transfer to pack', 'pxk0006343']]);
   eq('transfer → Trading in rows', tb[1].rows.map((r) => [r[0], r[3], r[4], r[5], r[7], r[8]]), [['POVN-2600101', 3300, 33, 'in', 'transfer from print', 'pnk0002874'], ['POVN-2600101', 34, 1, 'in', 'transfer from print', 'pnk0002874']]);
 
   // Numbering

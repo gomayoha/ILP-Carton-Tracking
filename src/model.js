@@ -242,7 +242,8 @@ export function receiptState(rec) {
 // Header text is copied exactly (including "INTERAL CODE") so columns line up when pasted.
 
 export const LAYOUTS = {
-  print: ['SKU', 'Customer ref', 'Description', 'Quantity', 'UOM', 'Status', 'Date', 'Shipping Docs', 'Remark'],
+  // The real PRINT sheet keeps Description empty and has an unlabelled 10th column with the PNK / PXK number.
+  print: ['SKU', 'Customer ref', 'Description', 'Quantity', 'UOM', 'Status', 'Date', 'Shipping Docs', 'Remark', 'PNK / PXK'],
   trading: ['PACKING NO/ INVOICE No', 'REFERENCE', 'INTERAL CODE', 'SHIPPED QTY', 'CARTONS', 'STATUS', 'Date ', 'CUSTOMER', 'DELIVERY NOTED NUMBER'],
 };
 
@@ -282,15 +283,15 @@ export function movementBlocks(rec, settings) {
   const row = (layout, dir, g, docs, remark, invoice, noteNo) => {
     const signed = dir === 'out' ? -g.qty : g.qty;
     if (layout === 'trading') return [invoice || '', g.ref || '', g.code, signed, g.cartons, dir, rec.date, docs, noteNo || ''];
-    return [g.code, g.ref || '', g.desc || '', signed, g.unit || 'piece', dir === 'in' ? 'In' : 'out', rec.date, docs, remark || ''];
+    return [g.code, g.ref || '', '', signed, g.unit || 'piece', dir === 'in' ? 'In' : 'out', rec.date, docs, remark || '', noteNo || ''];
   };
   if (rec.type === 'handoff') {
-    const rows = movedGroups(rec, { perLine: true }).map((g) => row(to.layout, 'in', g, 'Nhận thành phẩm', fmtWO(g.wo), '', rec.docNo));
+    const rows = movedGroups(rec, { perLine: true }).map((g) => row(to.layout, 'in', g, 'Nhận thành phẩm', fmtWO(g.wo), '', rec.noteNo));
     blocks.push({ wh: to, direction: 'in', layout: to.layout, header: LAYOUTS[to.layout], rows });
   } else if (rec.type === 'transfer') {
     const groups = movedGroups(rec);
     blocks.push({ wh: from, direction: 'out', layout: from.layout, header: LAYOUTS[from.layout],
-      rows: groups.map((g) => row(from.layout, 'out', g, `transfer to ${to.short}`, '', rec.extRef, rec.noteNo)) });
+      rows: groups.map((g) => row(from.layout, 'out', g, `transfer to ${to.short}`, '', rec.extRef, rec.outNoteNo)) });
     blocks.push({ wh: to, direction: 'in', layout: to.layout, header: LAYOUTS[to.layout],
       rows: groups.map((g) => row(to.layout, 'in', g, `transfer from ${from.short}`, '', rec.extRef, rec.noteNo)) });
   } else if (rec.type === 'shipment') {

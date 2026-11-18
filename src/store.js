@@ -198,8 +198,8 @@ export function newRecord(type) {
     fromWh: d.fromWh || '', toWh: type === 'shipment' ? '' : (d.toWh || ''),
     lines: [], scans: [], nextLn: 1, note: '',
   };
-  if (type === 'handoff') Object.assign(rec, { deliveredBy: '', receivedBy: '' });
-  if (type === 'transfer') Object.assign(rec, { extRef: '', noteNo: '' });
+  if (type === 'handoff') Object.assign(rec, { deliveredBy: '', receivedBy: '', noteNo: '' });
+  if (type === 'transfer') Object.assign(rec, { extRef: '', outNoteNo: '', noteNo: '' });
   if (type === 'shipment') Object.assign(rec, {
     customer: '', shipTo: '', contact: '', salesperson: '', noteNo: '',
     shipDate: today(), shippingMark: state.settings.shippingMark || 'IDEA L PACK', origin: state.settings.origin || 'VIETNAM',

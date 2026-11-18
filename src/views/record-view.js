@@ -136,8 +136,8 @@ export function RecordView({ id }) {
         <div><small>${tr('Gross weight', 'TL cả bì')}</small><b>${fmtNum(t.gw, 2)}</b><span>kg</span></div>
         <div><small>CBM</small><b>${fmtNum(t.cbm, 3)}</b><span>m³</span></div>` : html`
         <div><small>${tr('Lines', 'Số dòng')}</small><b>${t.lines + groups.length}</b><span>${tr('items', 'mã hàng')}</span></div>
-        ${rec.type === 'handoff' ? html`<div><small>${tr('Received by', 'Người nhận')}</small><b class="text">${rec.receivedBy || '—'}</b><span>${rec.deliveredBy ? tr('from ', 'từ ') + rec.deliveredBy : ''}</span></div>`
-          : html`<div><small>PO / PNK</small><b class="text">${rec.extRef || '—'}</b><span>${rec.noteNo || ''}</span></div>`}`}
+        ${rec.type === 'handoff' ? html`<div><small>${tr('Received by', 'Người nhận')}</small><b class="text">${rec.receivedBy || '—'}</b><span>${[rec.deliveredBy ? tr('from ', 'từ ') + rec.deliveredBy : '', rec.noteNo].filter(Boolean).join(' · ')}</span></div>`
+          : html`<div><small>PO / PXK / PNK</small><b class="text">${rec.extRef || '—'}</b><span>${[rec.outNoteNo, rec.noteNo].filter(Boolean).join(' · ')}</span></div>`}`}
     </div>
 
     ${isShip ? html`<div class="card"><div class="block-title"><h3>${tr('Packing list', 'Packing list')}</h3><span>${tr('Same layout as the paper packing list', 'Giống mẫu packing list giấy')}</span></div>

@@ -245,10 +245,12 @@ export function RecordForm({ type: typeProp, editId, copyFrom }) {
         ${type !== 'shipment' && html`<${Field} label=${tr('To', 'Đến')}><${WhSelect} value=${rec.toWh} onChange=${(v) => set({ toWh: v })} warehouses=${wh} /></${Field}>`}
         ${type === 'handoff' && html`
           <${Field} label=${tr('Delivered by', 'Người giao (xuất)')}><${Input} value=${rec.deliveredBy} onInput=${(v) => set({ deliveredBy: v })} /></${Field}>
-          <${Field} label=${tr('Received by', 'Người nhận')} hint=${tr('Optional — the warehouse confirms receipt on the saved slip', 'Tùy chọn — kho xác nhận nhận hàng trên phiếu đã lưu')}><${Input} value=${rec.receivedBy} onInput=${(v) => set({ receivedBy: v })} /></${Field}>`}
+          <${Field} label=${tr('Received by', 'Người nhận')} hint=${tr('Optional — the warehouse confirms receipt on the saved slip', 'Tùy chọn — kho xác nhận nhận hàng trên phiếu đã lưu')}><${Input} value=${rec.receivedBy} onInput=${(v) => set({ receivedBy: v })} /></${Field}>
+          <${Field} label=${tr('Receipt note no. (PNK)', 'Số phiếu nhập kho (PNK)')}><${Input} value=${rec.noteNo} onInput=${(v) => set({ noteNo: v })} placeholder="PNK0003012" /></${Field}>`}
         ${type === 'transfer' && html`
           <${Field} label="PO / POVN"><${Input} value=${rec.extRef} onInput=${(v) => set({ extRef: v })} placeholder="POVN-2600087" /></${Field}>
-          <${Field} label=${tr('Receipt note no. (PNK)', 'Số phiếu nhập kho (PNK)')}><${Input} value=${rec.noteNo} onInput=${(v) => set({ noteNo: v })} placeholder="pnk0002874" /></${Field}>`}
+          <${Field} label=${tr('Delivery note no. (PXK, sending side)', 'Số phiếu xuất kho (PXK, bên giao)')}><${Input} value=${rec.outNoteNo} onInput=${(v) => set({ outNoteNo: v })} placeholder="pxk0006343" /></${Field}>
+          <${Field} label=${tr('Receipt note no. (PNK, receiving side)', 'Số phiếu nhập kho (PNK, bên nhận)')}><${Input} value=${rec.noteNo} onInput=${(v) => set({ noteNo: v })} placeholder="pnk0002874" /></${Field}>`}
         ${type === 'shipment' && html`
           <${Field} label=${tr('Customer', 'Khách hàng')} required><${Input} value=${rec.customer} onInput=${(v) => set({ customer: v })} placeholder="Company name" /></${Field}>
           <${Field} label=${tr('Ship to', 'Giao đến')}><${Input} value=${rec.shipTo} onInput=${(v) => set({ shipTo: v })} /></${Field}>
