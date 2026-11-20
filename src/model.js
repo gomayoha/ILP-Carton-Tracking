@@ -39,7 +39,10 @@ export function fmtWO(wo) {
   const s = clean(wo);
   if (!s) return '';
   const m = s.match(/^w\.?o\.?\s*(.*)$/i);
-  return 'WO' + (m ? m[1] : s).replace(/\s+/g, '');
+  if (m) return 'WO' + m[1].replace(/\s+/g, '');
+  // Work orders from the production plan already carry their own prefix (e.g. IN0010211): keep them as they are.
+  if (/^[a-z]/i.test(s)) return s.replace(/\s+/g, '').toUpperCase();
+  return 'WO' + s.replace(/\s+/g, '');
 }
 
 // ── Cartons ─────────────────────────────────────────────────────────────────

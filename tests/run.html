@@ -75,6 +75,7 @@
 
   // Work order formats seen in the stock report
   eq('WO formats', ['10131', 'wo10141', 'WO 10134', 'WO10131'].map(fmtWO), ['WO10131', 'WO10141', 'WO10134', 'WO10131']);
+  eq('plan WO prefix kept', ['IN0010211', 'in 0010211'].map(fmtWO), ['IN0010211', 'IN0010211']);
 
   // QR payloads round-trip through the scanner parser
   const c = recordCartons(slip)[0];
