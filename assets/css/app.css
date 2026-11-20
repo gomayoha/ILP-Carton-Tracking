@@ -437,7 +437,7 @@ table.data.edit .input { min-height: 38px; font-size: 13.5px; }
 .lb-k.w { flex-basis: auto; }
 .lb-v { min-width: 0; font-size: calc(3.2mm * var(--s)); font-weight: 600; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .lb-row.big .lb-v { font-size: calc(4mm * var(--s)); font-weight: 700; }
-.lb-row.two .lb-v:first-of-type { flex: 1; }
+.lb-row.two .lb-v.d { flex: 1; }
 .lb-row.two .lb-v:last-child { flex: none; }
 .lb-row.ref .lb-v { white-space: normal; overflow: visible; font-size: calc(2.9mm * var(--s)); line-height: 1.15; word-break: break-all; font-weight: 700; }
 .lb-row.ref .lb-k { flex-basis: calc(24mm * var(--s)); }
@@ -588,4 +588,4 @@ table.data.edit .input { min-height: 38px; font-size: 13.5px; }
 .scan-po { margin-top: 10px; }
 .po-row { display: grid; grid-template-columns: minmax(0, 12rem) 1fr; gap: 10px; align-items: center; margin-top: 6px; }
 .lb-row.two .lb-k:first-child { flex-basis: calc(24mm * var(--s)); }
-.lb-row.two .lb-v:first-of-type { overflow: visible; text-overflow: clip; }
+.lb-row.two .lb-v.d { overflow: visible; text-overflow: clip; }

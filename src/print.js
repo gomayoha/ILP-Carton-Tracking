@@ -66,17 +66,15 @@ export function labelHTML(carton, rec, preset, opts = {}) {
     fsc = fscRow(carton.fsc, ['FSC 100%', 'FSC mix credit', 'FSC recycled', 'Non FSC']);
     foot = `<span>${esc(carton.id)}</span><span>MADE IN ${esc(rec.origin || 'VIETNAM')}</span>`;
   } else {
-    const hn = carton.lineNotation || {};
     const wo = fmtWO(carton.wo).replace(/^WO/, '');
     rows = [
       row('REFERENCE (MÃ):', [carton.code, carton.ref].filter(Boolean).join(' / '), 'ref'),
-      `<div class="lb-row two"><span class="lb-k">DATE (NGÀY):</span><span class="lb-v">${esc(fmtDate(rec.date))}</span><span class="lb-k w">W/O:</span><span class="lb-v">${esc(wo)}</span></div>`,
+      `<div class="lb-row two"><span class="lb-k">DATE (NGÀY):</span><span class="lb-v d">${esc(fmtDate(rec.date))}</span><span class="lb-k w">W/O:</span><span class="lb-v">${esc(wo)}</span></div>`,
       `<div class="lb-row big"><span class="lb-k">QUANTITY (SỐ LƯỢNG):</span><span class="lb-v">${esc(qtyOne)}${carton.isPartial ? ' <em>LẺ · PARTIAL</em>' : ''}</span></div>`,
       row('GROSS.W (KL TỔNG):', kg(carton.gw)),
       row('NET.W (KL TỊNH):', kg(carton.nw)),
       row('DIMENSION (KTT):', dimText(carton.l, carton.w, carton.h, 10, ' × ')),
-      row('TOTAL (TỔNG):', hn.total || ''),
-      row('ODD QUANTITY (SL LẺ):', hn.odd ? `${hn.odd}   → ${hn.grand}` : ''),
+      // TOTAL / ODD QUANTITY are on the slip, not the sticker (Ms Ly, Nov 2026): each sticker shows only its own carton.
     ].join('');
     fsc = fscRow(carton.fsc, ['100% FSC', 'FSC Mix Credit', 'FSC Recycled', 'Non FSC']);
     foot = `<span>${esc(carton.id)}</span><span>${esc(rec.docNo || '')} · ${esc(typeShortPrint(rec.type))}</span>`;
