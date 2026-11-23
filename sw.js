@@ -2,7 +2,7 @@
 // Strategy: serve from cache immediately, refresh the cache in the background.
 // Bump VERSION whenever files are published so every device picks up the new version.
 
-const VERSION = 'ilp-carton-v1.2.3';
+const VERSION = 'ilp-carton-v1.2.4';
 
 const CORE = [
   './', 'index.html', 'manifest.webmanifest',

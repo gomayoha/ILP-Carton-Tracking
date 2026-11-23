@@ -9,6 +9,7 @@ import { state } from './store.js';
 
 export const LABEL_PRESETS = {
   'thermal-100x70': { w: 100, h: 70, en: 'Thermal roll · 100 × 70 mm', vi: 'Cuộn nhiệt · 100 × 70 mm' },
+  'thermal-100x55': { w: 100, h: 55, s: 0.72, en: 'Barcode printer roll · 100 × 55 mm (Production)', vi: 'Cuộn máy in mã vạch · 100 × 55 mm (Sản xuất)' },
   'thermal-100x50': { w: 100, h: 50, en: 'Thermal roll · 100 × 50 mm', vi: 'Cuộn nhiệt · 100 × 50 mm' },
   'thermal-100x100': { w: 100, h: 100, en: 'Thermal roll · 100 × 100 mm', vi: 'Cuộn nhiệt · 100 × 100 mm' },
   'thermal-100x150': { w: 100, h: 150, en: 'Thermal roll · 100 × 150 mm (4×6")', vi: 'Cuộn nhiệt · 100 × 150 mm (4×6")' },
@@ -46,7 +47,8 @@ export function labelHTML(carton, rec, preset, opts = {}) {
   const p = LABEL_PRESETS[preset] || LABEL_PRESETS['thermal-100x70'];
   const pack = rec.type === 'shipment';
   const ref = LABEL_REF[pack ? 'pack' : 'print'];
-  const s = Math.min(p.w / ref.w, p.h / ref.h);
+  // `s` on a preset overrides the scale for wide, short labels (rows shrink to fit, so text can be larger than h/ref.h).
+  const s = (!pack && p.s) || Math.min(p.w / ref.w, p.h / ref.h);
   const qr = qrSvg(cartonPayload(carton, opts.qrMode || 'link'), { ecc: 'M' });
   const logo = opts.showLogo !== false ? `<img class="lb-logo" src="${LOGO}" alt="">` : '<span class="lb-logo"></span>';
   const n = String(carton.n).padStart(String(carton.of).length, '0');
