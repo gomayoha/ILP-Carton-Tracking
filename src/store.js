@@ -23,7 +23,7 @@ export const DEFAULT_SETTINGS = {
 };
 
 const DEVICE_KEY = 'ilp.device';
-const DEFAULT_DEVICE = { labelPreset: 'thermal-100x70', qrMode: 'link', showLogo: true, deviceName: '', beep: true };
+const DEFAULT_DEVICE = { labelPreset: 'thermal-100x55', qrMode: 'link', showLogo: true, deviceName: '', beep: true };
 
 function loadDevice() {
   try { return { ...DEFAULT_DEVICE, ...JSON.parse(localStorage.getItem(DEVICE_KEY) || '{}') }; } catch { return { ...DEFAULT_DEVICE }; }
