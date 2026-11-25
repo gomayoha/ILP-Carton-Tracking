@@ -76,6 +76,9 @@ Waiting on Ms Ly
 
 To build (in order)
 - [ ] Raw materials (after Ms Ly's answer)
+- [ ] Warn before saving a record with ~3,000+ scanned cartons (Firestore 1 MB per document ≈ 4,000 scans); suggest splitting
+- [ ] China access: Google/Firebase is blocked in mainland China — find a solution (e.g. a China-reachable host/proxy or a separate backend) before China goes live; put it on the 1 Dec review as a risk with a date
+- [ ] Set a Firebase budget alert (~$5) if the project ever moves to the pay-as-you-go plan. Storage answer for the review (25 Nov 2026): free Spark plan is enough (1 save per record, not per carton; ~100–300 MB/year)
 - [ ] Review pack for Tue 1 Dec 2026: what is built, gaps, risks (China network, quota, IT approval, languages), go-live date per country
 - [ ] Later: Chinese / French screens, pallet QR (scan one pallet = all its cartons), stock balance per location
 
