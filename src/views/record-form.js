@@ -4,7 +4,7 @@ import { html, useState, useEffect, useRef } from '../../vendor/preact-htm.js';
 import { tr } from '../i18n.js';
 import { useStore, getRecord, newRecord, saveRecord, docNoTaken, nextDocNo, findCarton, cartonLocation, toast, state } from '../store.js';
 import { Icon, Btn, Field, Input, NumInput, Select, ItemPicker, WhSelect, PageHead, Modal, Chip } from '../components.js';
-import { UNITS, FSC, perCartonNotation, handNotation, split, notation, totals, validate, typeName, scanGroups, unitLabel, recordCartons } from '../model.js';
+import { UNITS, FSC, perCartonNotation, handNotation, split, notation, totals, validate, typeName, scanGroups, unitLabel, recordCartons, pickFromLines, pickProgress } from '../model.js';
 import { num, round, fmtNum, fmtDec, newId, today, clean, go } from '../util.js';
 import { parseScan } from '../qr.js';
 import { Scanner, feedback } from './scanner.js';
@@ -121,6 +121,12 @@ function ScanModal({ recRef, setRec, onClose }) {
     recRef.current = next; // so a fast second scan sees this one
     setRec(next);
 
+    if ((cur.pick || []).length) {
+      const want = cur.pick.find((x) => x.code === c.code);
+      if (!want) { feedback(false); add(`${c.code} · ${fmtNum(c.qty)} — ${tr('added, but this item is NOT on the pick list', 'đã thêm, nhưng mã này KHÔNG có trong danh sách lấy hàng')}`, 'warn'); return; }
+      const gotQty = next.scans.filter((x) => x.code === c.code).reduce((a, x) => a + num(x.qty), 0);
+      if (gotQty > want.qty) { feedback(false); add(`${c.code} · ${fmtNum(c.qty)} — ${tr(`added, but now ${fmtNum(gotQty)} of ${fmtNum(want.qty)} asked (too many)`, `đã thêm, nhưng giờ là ${fmtNum(gotQty)} / ${fmtNum(want.qty)} yêu cầu (thừa)`)}`, 'warn'); return; }
+    }
     const loc = cartonLocation(p.cartonId);
     if (loc?.shipped) { feedback(false); add(`${p.cartonId} — ${tr('added, but it was already shipped in', 'đã thêm, nhưng thùng đã xuất trong')} ${loc.rec.docNo}`, 'warn'); return; }
     if (loc && cur.fromWh && loc.wh && loc.wh !== cur.fromWh) { feedback(true); add(`${c.code} · ${fmtNum(c.qty)} — ${tr('added, but the system shows it in', 'đã thêm, nhưng hệ thống ghi nhận đang ở')} ${loc.wh}`, 'warn'); return; }
@@ -194,6 +200,52 @@ function ImportPackingList({ rec, setRec }) {
     ${result && html`<div class=${'banner ' + (result.bad ? 'bad' : result.warnings.length ? 'warn' : 'info')}><${Icon} name=${result.bad ? 'alert' : 'check'} /><div>
       ${!result.bad && html`<b>${result.file}</b>: ${tr(`${result.lines} lines · ${fmtNum(result.qty)} pcs · ${result.cartons} cartons (labels) added.`, `đã thêm ${result.lines} dòng · ${fmtNum(result.qty)} sp · ${result.cartons} thùng (nhãn).`)}`}
       ${result.warnings.length > 0 && html`<ul>${result.warnings.map((w) => html`<li>${w}</li>`)}</ul>`}</div></div>`}
+  </div>`;
+}
+
+// ── Pick list for a shipment (pick up) ──────────────────────────────────────
+
+function PickList({ rec, setRec }) {
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const onFile = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    if (/\.pdf$/i.test(file.name)) { setMsg({ bad: true, text: tr('A PDF cannot be read. Please use the Excel packing list.', 'Không đọc được file PDF. Hãy dùng packing list Excel.') }); return; }
+    setBusy(true);
+    try {
+      const res = await parsePackingListFile(file);
+      if (!res.lines.length) setMsg({ bad: true, text: res.warnings.join(' ') });
+      else {
+        const pick = pickFromLines(res.lines);
+        const scanPo = {};
+        for (const p of pick) if (p.po) scanPo[p.code] = p.po;
+        setRec((r) => ({ ...r, pick, pickFile: file.name, scanPo: { ...scanPo, ...(r.scanPo || {}) } }));
+        setMsg({ text: tr(`${file.name}: ${pick.length} ${pick.length === 1 ? 'item' : 'items'} · ${pick.reduce((a, p) => a + p.cartons, 0)} cartons to pick.`, `${file.name}: ${pick.length} mã hàng · ${pick.reduce((a, p) => a + p.cartons, 0)} thùng cần lấy.`), warn: res.warnings.join(' ') });
+      }
+    } catch (err) { setMsg({ bad: true, text: tr('Could not read this file: ', 'Không đọc được file: ') + (err.message || err) }); }
+    setBusy(false);
+  };
+  const pp = pickProgress(rec);
+  const stLabel = { todo: tr('To pick', 'Chưa lấy'), part: tr('Short', 'Thiếu'), done: tr('Done', 'Đủ'), over: tr('Too many', 'Thừa') };
+  const stKind = { todo: 'idle', part: 'warn', done: 'good', over: 'bad' };
+  return html`<div class="card pick">
+    <div class="block-title"><h3>${tr('Pick list', 'Danh sách lấy hàng')}</h3>
+      ${(rec.pick || []).length > 0 && html`<span>${pp.gotCartons} / ${pp.cartons} ${tr('cartons', 'thùng')} · ${fmtNum(pp.gotQty)} / ${fmtNum(pp.qty)}</span>`}</div>
+    ${!(rec.pick || []).length && html`<p class="muted small">${tr('Optional: upload the delivery packing list (Excel). Then scan the cartons: the screen checks each item and count against it.', 'Tùy chọn: tải packing list giao hàng (Excel). Sau đó quét thùng: màn hình kiểm tra từng mã và số lượng theo danh sách.')}</p>`}
+    ${(rec.pick || []).length > 0 && html`<div class="table-wrap"><table class="data">
+      <thead><tr><th>${tr('Item', 'Mã hàng')}</th><th>${tr('Customer ref', 'Mã KH')}</th><th class="r">${tr('Asked', 'Yêu cầu')}</th><th class="r">${tr('Scanned', 'Đã quét')}</th><th class="r">${tr('Cartons', 'Thùng')}</th><th>${tr('Status', 'Trạng thái')}</th></tr></thead>
+      <tbody>${pp.rows.map((r) => html`<tr><td class="mono">${r.code}</td><td>${r.ref}</td><td class="r">${fmtNum(r.qty)}</td><td class="r b">${fmtNum(r.gotQty)}</td><td class="r">${r.gotCartons} / ${r.cartons}</td><td><${Chip} kind=${stKind[r.status]}>${stLabel[r.status]}</${Chip}></td></tr>`)}
+        ${pp.extra.map((r) => html`<tr><td class="mono">${r.code}</td><td></td><td class="r">0</td><td class="r b">${fmtNum(r.gotQty)}</td><td class="r">${r.gotCartons}</td><td><${Chip} kind="bad">${tr('Not on list', 'Không có trong DS')}</${Chip}></td></tr>`)}</tbody>
+    </table></div>
+    ${pp.complete && html`<p class="pick-ok"><${Icon} name="check" /> ${tr('Everything on the pick list is scanned.', 'Đã quét đủ toàn bộ danh sách lấy hàng.')}</p>`}`}
+    <div class="pick-actions">
+      <label class=${'btn secondary small' + (busy ? ' disabled' : '')}><${Icon} name="upload" /><span>${busy ? tr('Reading…', 'Đang đọc…') : (rec.pick || []).length ? tr('Replace pick list', 'Thay danh sách') : tr('Upload delivery packing list (.xlsx)', 'Tải packing list giao hàng (.xlsx)')}</span>
+        <input type="file" accept=".xlsx,.xls,.csv,.pdf" hidden onChange=${onFile} disabled=${busy} /></label>
+      ${(rec.pick || []).length > 0 && html`<button class="link small" onClick=${() => { setRec((r) => ({ ...r, pick: [], pickFile: '' })); setMsg(null); }}>${tr('Remove pick list', 'Bỏ danh sách')}</button>`}
+    </div>
+    ${msg && html`<p class=${'small ' + (msg.bad ? 'bad-text' : 'muted')}>${msg.text}${msg.warn ? ' ' + msg.warn : ''}</p>`}
   </div>`;
 }
 
@@ -316,6 +368,7 @@ export function RecordForm({ type: typeProp, editId, copyFrom }) {
     </div>
 
     ${type === 'inbound' && html`<${ImportPackingList} rec=${rec} setRec=${setRec} />`}
+    ${type === 'shipment' && html`<${PickList} rec=${rec} setRec=${setRec} />`}
     ${type !== 'handoff' && type !== 'inbound' && html`<div class="scan-cta">
       <${Btn} kind="primary" icon="scan" onClick=${() => setScanOpen(true)}>${tr('Scan cartons', 'Quét thùng')}</${Btn}>
       <span class="muted">${type === 'transfer' ? tr('Fastest way: scan every carton that is moving.', 'Cách nhanh nhất: quét từng thùng được chuyển.') : tr('Scan the production cartons being shipped — they keep their original labels and QR.', 'Quét các thùng sản xuất được xuất đi — giữ nguyên nhãn và QR ban đầu.')}</span>

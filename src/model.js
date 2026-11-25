@@ -166,6 +166,43 @@ export function scanGroups(rec) {
   return [...groups.values()].sort((a, b) => a.code.localeCompare(b.code) || b.qtyPer - a.qtyPer);
 }
 
+// ── Pick list (pick up) ─────────────────────────────────────────────────────
+// A shipment can carry the customer's delivery packing list as `rec.pick` (what must go out).
+// The warehouse scans cartons against it; this compares what was scanned with what was asked.
+
+export function pickFromLines(lines) {
+  const by = new Map();
+  for (const l of lines) {
+    const k = l.code;
+    const p = by.get(k) || { code: l.code, ref: l.ref || '', desc: l.desc || '', po: l.po || '', qty: 0, cartons: 0, ppc: num(l.ppc) || '' };
+    p.qty = round(p.qty + num(l.qty), 3);
+    p.cartons += split(l.qty, l.ppc).count;
+    if (p.ppc !== num(l.ppc)) p.ppc = '';
+    by.set(k, p);
+  }
+  return [...by.values()];
+}
+
+// [{ code, ref, desc, po, qty, cartons, gotQty, gotCartons, status: 'todo' | 'part' | 'done' | 'over' }] + extra codes not asked for.
+export function pickProgress(rec) {
+  const got = new Map();
+  for (const s of rec.scans || []) {
+    const g = got.get(s.code) || { qty: 0, cartons: 0 };
+    g.qty = round(g.qty + num(s.qty), 3); g.cartons += 1;
+    got.set(s.code, g);
+  }
+  const rows = (rec.pick || []).map((p) => {
+    const g = got.get(p.code) || { qty: 0, cartons: 0 };
+    const status = !g.qty ? 'todo' : g.qty < p.qty ? 'part' : g.qty > p.qty ? 'over' : 'done';
+    return { ...p, gotQty: g.qty, gotCartons: g.cartons, status };
+  });
+  const asked = new Set(rows.map((r) => r.code));
+  const extra = [...got.entries()].filter(([c]) => !asked.has(c)).map(([code, g]) => ({ code, gotQty: g.qty, gotCartons: g.cartons }));
+  const sum = (f) => rows.reduce((a, r) => a + r[f], 0);
+  return { rows, extra, qty: round(sum('qty'), 3), gotQty: round(sum('gotQty'), 3), cartons: sum('cartons'), gotCartons: sum('gotCartons'),
+    complete: rows.length > 0 && rows.every((r) => r.status === 'done') && !extra.length };
+}
+
 // ── Totals ──────────────────────────────────────────────────────────────────
 
 export function lineWeights(line) {

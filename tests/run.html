@@ -15,7 +15,7 @@
 <p>Open this page from the local server (e.g. http://127.0.0.1:8765/tests/run.html). Every line should be green.</p>
 <div id="out"></div>
 <script type="module">
-  import { split, notation, packingRows, totals, movementBlocks, recordCartons, fmtWO, validate, handNotation, perCartonNotation, receiptState, hasReceipt, scanGroups, packingListLines, cartonPallet, excelDate } from '../src/model.js';
+  import { split, notation, packingRows, totals, movementBlocks, recordCartons, fmtWO, validate, handNotation, perCartonNotation, receiptState, hasReceipt, scanGroups, packingListLines, cartonPallet, excelDate, pickFromLines, pickProgress } from '../src/model.js';
   import { incrementDocNo, norm } from '../src/util.js';
   import { parseScan, cartonPayload } from '../src/qr.js';
   import { DEFAULT_SETTINGS } from '../src/store.js';
@@ -146,6 +146,14 @@
   const delivery = packingListLines([['Packing List No.', 'X'], ['Your Ref.', 'Our Ref.', 'Description', 'Total\nquantity', 'Quantity/\nUOM', 'Number of UOM', 'Net weight kg', 'Gross weight kg', 'L ', 'W', 'H', 'CBM', 'QTY', 'QTY UOM', 'Gross', 'Net'],
     ['CUSTREF-1', 'ILPTST00000007', 'Printed box', 31500, 250, 126, 4.5, 5, 40, 25, 14, 1.764, 31500, 126, 567, 630], ['TOTAL', '', '', 31500, '', 126]]);
   eq('customer delivery packing list (Your Ref / Our Ref) is read', delivery.lines.map((l) => [l.code, l.ref, l.qty, l.ppc, l.nw, l.gw, l.l, l.w, l.h]), [['ILPTST00000007', 'CUSTREF-1', 31500, 250, 4.5, 5, 40, 25, 14]]);
+  const pick = pickFromLines(delivery.lines);
+  eq('pick list from the delivery packing list', pick.map((p) => [p.code, p.qty, p.cartons, p.ppc]), [['ILPTST00000007', 31500, 126, 250]]);
+  const sc = (n, code = 'ILPTST00000007', qty = 250) => [...Array(n)].map((_, i) => ({ cid: `X-1-${i + 1}-${code}`, code, qty }));
+  const pp1 = pickProgress({ pick, scans: sc(125) });
+  eq('pick: 125 of 126 cartons is short', [pp1.rows[0].status, pp1.gotCartons, pp1.cartons, pp1.complete], ['part', 125, 126, false]);
+  eq('pick: all 126 scanned is complete', pickProgress({ pick, scans: sc(126) }).complete, true);
+  eq('pick: one carton too many', pickProgress({ pick, scans: sc(127) }).rows[0].status, 'over');
+  eq('pick: an item not on the list is flagged', pickProgress({ pick, scans: [...sc(126), ...sc(1, 'ILPTST00000099', 10)] }).extra.map((e) => e.code), ['ILPTST00000099']);
   const inb = { id: 'INB00001', type: 'inbound', docNo: 'SUP-PL-1', date: '2026-10-23', status: 'active', supplier: 'Test supplier', toWh: 'PACK', extRef: 'PO-TEST-1', noteNo: 'pnk0000001', lines: pl.lines, scans: [] };
   const ic = recordCartons(inb);
   eq('supplier receipt: one label per carton, numbered across the list', [ic.length, `${ic[0].n}/${ic[0].of}`, `${ic[624].n}/${ic[624].of}`, ic[624].pallet], [625, '1/625', '625/625', '14']);

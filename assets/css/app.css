@@ -589,3 +589,11 @@ table.data.edit .input { min-height: 38px; font-size: 13.5px; }
 .po-row { display: grid; grid-template-columns: minmax(0, 12rem) 1fr; gap: 10px; align-items: center; margin-top: 6px; }
 .lb-row.two .lb-k:first-child { flex-basis: calc(24mm * var(--s)); }
 .lb-row.two .lb-v.d { overflow: visible; text-overflow: clip; }
+
+/* Pick list (shipment) and supplier packing list import */
+.card.pick, .card.import-pl { margin-top: 14px; }
+.pick-actions { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-top: 10px; }
+.pick-ok { display: flex; align-items: center; gap: 6px; color: var(--good); font-weight: 600; margin-top: 8px; }
+.pick-ok svg { width: 16px; height: 16px; }
+.bad-text { color: var(--bad); }
+.import-pl .banner { margin-top: 12px; }
