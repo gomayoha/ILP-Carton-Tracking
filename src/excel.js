@@ -1,7 +1,7 @@
 // Excel in and out. SheetJS (≈1 MB) is only loaded when one of these functions is used.
 
 import { loadScript, norm, clean, num, today, fmtDate, toCSV, downloadFile } from './util.js';
-import { packingRows, totals, movementBlocks, LAYOUTS, recordCartons, split, fmtWO, warehouse, scanGroups, packingListLines } from './model.js';
+import { packingRows, totals, movementBlocks, LAYOUTS, recordCartons, split, fmtWO, warehouse, scanGroups, packingListLines, rackOf, locLabel } from './model.js';
 import { itemToRow, rowToItem } from './store.js';
 
 async function XLSX() {
@@ -187,6 +187,31 @@ export async function downloadLines(records, settings, label, format = 'xlsx') {
   const wb = X.utils.book_new();
   X.utils.book_append_sheet(wb, sheetFrom(X, rows, [10, 12, 11, 8, 8, 8, 18, 14, 17, 20, 28, 10, 7, 9, 8, 16, 10, 10, 10, 9], [2]), 'Records');
   X.writeFile(wb, `ILP records ${label || today()}.xlsx`);
+}
+
+// Stock by location, in the layout of the France warehouse report: one sheet per rack,
+// Location · Référence · Nombre cartons · Quantity par carton · Mouvement · Commentaires
+// (+ internal code, description and total so nothing has to be looked up).
+export async function downloadStockByLocation(rows, whName) {
+  const X = await XLSX();
+  const wb = X.utils.book_new();
+  const racks = new Map();
+  for (const r of rows) {
+    const k = r.loc ? `Rack ${rackOf(r.loc)}` : 'Sans emplacement';
+    if (!racks.has(k)) racks.set(k, []);
+    racks.get(k).push(r);
+  }
+  const head = ['Location', 'Référence', 'Nombre\ncartons', 'Quantity\npar carton', 'Mouvement', 'Commentaires', 'Internal code', 'Description', 'Total qty'];
+  const keys = [...racks.keys()].sort((a, b) => (a === 'Sans emplacement') - (b === 'Sans emplacement') || a.localeCompare(b));
+  for (const k of keys) {
+    const body = racks.get(k).map((r) => [r.loc ? locLabel(r.loc) : '', r.ref || r.code, r.cartons, r.perCarton, '', '', r.code, r.desc || '', r.qty]);
+    const aoa = [[`${k}${whName ? ' · ' + whName : ''}`], ['Dernière date: ', new Date(today() + 'T00:00:00')], [], head, ...body];
+    const ws = X.utils.aoa_to_sheet(aoa, { cellDates: true, dateNF: 'dd/mm/yyyy' });
+    ws['!cols'] = [10, 18, 10, 11, 12, 16, 17, 26, 10].map((w) => ({ wch: w }));
+    X.utils.book_append_sheet(wb, ws, safeName(k));
+  }
+  if (!keys.length) X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet([head]), 'Stock');
+  X.writeFile(wb, `Stock by location ${whName || ''} ${today()}.xlsx`.replace(/\s+/g, ' '));
 }
 
 export async function downloadPackingList(rec) {

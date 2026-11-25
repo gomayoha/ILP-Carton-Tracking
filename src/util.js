@@ -75,6 +75,9 @@ export function norm(s) {
     .toLowerCase().replace(/\s+/g, ' ').trim();
 }
 
+// Shelf locations are written many ways ("A. 1. 2", "a.1.2", "A01"): one form, no spaces, upper case.
+export const normLoc = (s) => String(s ?? '').toUpperCase().replace(/\s+/g, '');
+
 export function clean(s) {
   return String(s ?? '').replace(/ /g, ' ').replace(/\s+/g, ' ').trim();
 }

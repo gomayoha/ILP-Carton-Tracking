@@ -35,7 +35,7 @@ Read this before changing anything.
 - `src/store.js` — state, actions, item search, doc numbering, carton location/history, learning carton size/weights from saved records.
 - `src/print.js` — label presets + label HTML, slip (bilingual like the paper form), packing list (same columns as the paper one).
 - `src/excel.js` — item import from stock report workbooks (header-synonym matching, picks the column that really holds ILP codes), xlsx/csv exports, stock rows in the exact `PRINT` / `In-out detail` column order.
-- `src/views/*` — screens. `src/i18n.js` — every UI string is `tr('English', 'Tiếng Việt')`; printouts use both languages.
+- `src/views/*` — screens (`stock.js` = stock by location + shelf labels). `src/i18n.js` — every UI string is `tr('English', 'Tiếng Việt')`; printouts use both languages.
 - `sw.js` — offline cache. **Bump `VERSION` on every release** and add new files to `CORE`.
 - `firestore.rules`, `docs/SETUP.md` (go-live steps for Yohan).
 
@@ -60,6 +60,7 @@ All warehouses of the group: China, Vietnam, France, UAE. Every operator scans t
 Done
 - [x] Supplier receipt: upload Excel (supplier packing list, Ms Ly's stock-in template, delivery packing list) → 1 sticker per carton → scan to confirm (25 Nov 2026)
 - [x] 100 × 55 mm sticker default; TOTAL / ODD on the slip only
+- [x] Storage: "Put away" record (type `putaway`: warehouse + location + scanned cartons; "Save & next shelf"); shelf QR labels `ILP-LOC:A.1.2` printed from the Stock page (ranges like A.1.1-A.9.6); Stock page = current stock by location (`currentStock`, `stockByLocation`), Excel export in the France report layout (one sheet per rack, French headers + internal code / description / total). Locations are stored without spaces (A.1.2) and shown "A. 1. 2" in the Excel (25 Nov 2026)
 - [x] Pick up: on a shipment, upload the delivery packing list as a pick list (`rec.pick`, `pickProgress`); scanning warns on items not on the list / too many; the shipment page shows short / complete (25 Nov 2026)
 
 Waiting on Yohan
@@ -73,7 +74,6 @@ Waiting on Ms Ly
 - [ ] Info per warehouse (China, France, UAE): contact, inbound docs, locations, pick up, outbound, volume, equipment, stock report, language
 
 To build (in order)
-- [ ] Storage: scan a location then cartons to put them away / move them; carton page shows where it is. Report must match the France stock report ("depot meaux.xlsx", 25 Nov 2026): one sheet per rack (Rack A–F), columns Location · Référence · Nombre cartons · Quantity par carton · Mouvement · Commentaires; locations written "A. 1. 2" = rack . level (1–9) . position (1–6); ~324 locations, keyed by **customer reference**, not ILP code; French headers. Ms Ly asked whether the system exports reports to Excel.
 - [ ] Raw materials (after Ms Ly's answer)
 - [ ] Review pack for Tue 1 Dec 2026: what is built, gaps, risks (China network, quota, IT approval, languages), go-live date per country
 - [ ] Later: Chinese / French screens, pallet QR (scan one pallet = all its cartons), stock balance per location

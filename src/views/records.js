@@ -59,7 +59,7 @@ export function RecordsPage({ query }) {
     toast(ok ? tr(`${blocks[0].rows.length} rows copied for ${blocks[0].wh.code}.`, `Đã sao chép ${blocks[0].rows.length} dòng cho ${blocks[0].wh.code}.`) : tr('Could not copy', 'Không sao chép được'), ok ? 'ok' : 'bad');
   };
 
-  const types = [['all', tr('All', 'Tất cả')], ['handoff', typeShort('handoff')], ['inbound', typeShort('inbound')], ['transfer', typeShort('transfer')], ['shipment', typeShort('shipment')]];
+  const types = [['all', tr('All', 'Tất cả')], ['handoff', typeShort('handoff')], ['inbound', typeShort('inbound')], ['putaway', typeShort('putaway')], ['transfer', typeShort('transfer')], ['shipment', typeShort('shipment')]];
   return html`
     <${PageHead} eyebrow=${tr('Records', 'Chứng từ')} title=${tr('Slips, transfers & shipments', 'Phiếu, chuyển kho & xuất hàng')}
       actions=${html`<a class="btn primary" href="#/new/handoff"><${Icon} name="plus" /><span>${tr('New handoff', 'Phiếu giao nhận mới')}</span></a>`} />

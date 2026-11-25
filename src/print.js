@@ -2,7 +2,7 @@
 // and the packing list (matches the Idea L Pack packing list).
 
 import { tr, bi } from './i18n.js';
-import { qrSvg, cartonPayload, recordPayload } from './qr.js';
+import { qrSvg, cartonPayload, recordPayload, locationPayload } from './qr.js';
 import { recordCartons, packingRows, totals, notation, fmtWO, unitLabel, warehouse, scanGroups, typeName, FSC } from './model.js';
 import { fmtDate, fmtNum, fmtDec, num, round } from './util.js';
 import { state } from './store.js';
@@ -248,6 +248,21 @@ export async function printDoc(html, pageCss) {
 export function printLabels(rec, cartons, device) {
   const { html, pageCss } = labelsPage(cartons, rec, device.labelPreset, { qrMode: device.qrMode, showLogo: device.showLogo });
   return printDoc(html, pageCss);
+}
+
+// Shelf labels: big location text + QR ("ILP-LOC:A.1.2"), same label size as the carton stickers.
+export function printLocationLabels(locs, device) {
+  const p = LABEL_PRESETS[device.labelPreset] || LABEL_PRESETS['thermal-100x70'];
+  const one = (loc) => `<div class="label loclabel" style="--lw:${p.w}mm;--lh:${p.h}mm">
+    <div class="loc-text"><small>LOCATION · VỊ TRÍ</small><b>${esc(loc)}</b></div>
+    <div class="loc-qr">${qrSvg(locationPayload(loc), { ecc: 'M' })}</div></div>`;
+  const labels = locs.map(one);
+  if (p.cols) {
+    const per = p.cols * p.rows; const pages = [];
+    for (let i = 0; i < labels.length; i += per) pages.push(`<div class="sheet" style="--cols:${p.cols};--rows:${p.rows};--lw:${p.w}mm;--lh:${p.h}mm;padding-top:${p.top || 0}mm">${labels.slice(i, i + per).join('')}</div>`);
+    return printDoc(pages.join(''), '@page { size: A4 portrait; margin: 0; }');
+  }
+  return printDoc(labels.map((l) => `<div class="label-page">${l}</div>`).join(''), `@page { size: ${p.w}mm ${p.h}mm; margin: 0; }`);
 }
 
 export const printSlip = (rec) => printDoc(slipHTML(rec), '@page { size: A4 portrait; margin: 10mm; }');

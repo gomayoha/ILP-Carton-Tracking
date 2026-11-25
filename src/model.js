@@ -1,16 +1,17 @@
 // Business rules: carton split, numbering, totals, packing-list rows and Excel export rows.
 // Kept free of UI code so it can be tested on its own (see tests/model.test.html).
 
-import { num, round, fmtNum, clean, norm } from './util.js';
+import { num, round, fmtNum, clean, norm, normLoc } from './util.js';
 import { tr } from './i18n.js';
 
-export const TYPES = ['handoff', 'inbound', 'transfer', 'shipment'];
+export const TYPES = ['handoff', 'inbound', 'transfer', 'shipment', 'putaway'];
 
 export const typeName = (t) => ({
   handoff: tr('Production handoff', 'Giao nhận thành phẩm'),
   inbound: tr('Supplier receipt', 'Nhập hàng từ nhà cung cấp'),
   transfer: tr('Warehouse transfer', 'Chuyển kho'),
   shipment: tr('Shipment', 'Xuất hàng'),
+  putaway: tr('Put away / move to shelf', 'Xếp hàng lên kệ'),
 }[t] || t);
 
 export const typeShort = (t) => ({
@@ -18,6 +19,7 @@ export const typeShort = (t) => ({
   inbound: tr('Supplier receipt', 'Nhập NCC'),
   transfer: tr('Transfer', 'Chuyển kho'),
   shipment: tr('Shipment', 'Xuất hàng'),
+  putaway: tr('Put away', 'Xếp kệ'),
 }[t] || t);
 
 export const UNITS = [
@@ -344,6 +346,8 @@ export function movementBlocks(rec, settings) {
   if (rec.type === 'handoff') {
     const rows = movedGroups(rec, { perLine: true }).map((g) => row(to.layout, 'in', g, 'Nhận thành phẩm', fmtWO(g.wo), '', rec.noteNo));
     blocks.push({ wh: to, direction: 'in', layout: to.layout, header: LAYOUTS[to.layout], rows });
+  } else if (rec.type === 'putaway') {
+    return blocks; // moving inside a warehouse changes no stock totals
   } else if (rec.type === 'inbound') {
     const rows = movedGroups(rec, { perLine: true }).map((g) => row(to.layout, 'in', g, rec.supplier || 'supplier', g.po || rec.extRef || '', rec.docNo, rec.noteNo));
     blocks.push({ wh: to, direction: 'in', layout: to.layout, header: LAYOUTS[to.layout], rows });
@@ -370,6 +374,12 @@ export function validate(rec, { docNoTaken } = {}) {
   if (clean(rec.docNo) && docNoTaken) req(!docNoTaken, `Number ${rec.docNo} is already used by another ${typeShort(rec.type).toLowerCase()}.`, `Số ${rec.docNo} đã được dùng cho phiếu khác.`);
   req(rec.date, 'Date is required.', 'Cần nhập ngày.');
   if (rec.type === 'shipment') req(clean(rec.customer), 'Customer is required.', 'Cần nhập khách hàng.');
+  if (rec.type === 'putaway') {
+    req(normLoc(rec.loc), 'Location is required.', 'Cần nhập vị trí.');
+    req(rec.toWh, 'Warehouse is required.', 'Cần chọn kho.');
+    req((rec.scans || []).length, 'Scan at least one carton.', 'Cần quét ít nhất một thùng.');
+    return errors;
+  }
   if (rec.type === 'inbound') { req(clean(rec.supplier), 'Supplier is required.', 'Cần nhập nhà cung cấp.'); req(rec.toWh, 'Receiving warehouse is required.', 'Cần chọn kho nhận.'); }
   else if (rec.type !== 'shipment') req(rec.fromWh !== rec.toWh, 'From and To must be different.', 'Nơi giao và nơi nhận phải khác nhau.');
   const lines = rec.lines || [];
@@ -490,3 +500,54 @@ export function excelDate(v) {
   if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
   return /^\d{4}-\d{2}-\d{2}/.test(clean(v)) ? clean(v).slice(0, 10) : '';
 }
+
+// ── Stock by location (storage) ─────────────────────────────────────────────
+// Where every carton is now. Cartons are created by production slips, supplier receipts and
+// transfer lines (their first location is the line's location, e.g. from the stock-in sheet);
+// then, in date order, a transfer moves them to another warehouse (location unknown until put away),
+// a put-away places them on a shelf, and a shipment takes them out of stock.
+
+const recOrder = (a, b) => (a.date || '').localeCompare(b.date || '') || (a.createdAt || 0) - (b.createdAt || 0);
+
+export function currentStock(records) {
+  const live = [...records].filter((r) => r.status !== 'void' && !r.deleted).sort(recOrder);
+  const now = new Map();
+  for (const r of live) {
+    if (r.type === 'shipment' || r.type === 'putaway') continue;
+    for (const c of recordCartons(r)) now.set(c.id, { cid: c.id, code: c.code, ref: c.ref || '', desc: c.desc || '', unit: c.unit, qty: c.qty, wh: r.toWh, loc: normLoc(c.location), date: r.date, recId: r.id });
+  }
+  for (const r of live) {
+    for (const s of r.scans || []) {
+      const c = now.get(s.cid);
+      if (!c) continue;
+      if (r.type === 'shipment') now.delete(s.cid);
+      else if (r.type === 'putaway') Object.assign(c, { wh: r.toWh, loc: normLoc(r.loc), date: r.date });
+      else if (r.type === 'transfer') Object.assign(c, { wh: r.toWh, loc: '', date: r.date });
+    }
+  }
+  return [...now.values()];
+}
+
+// Natural order for locations: A.1.2 < A.1.10 < A.2.1 < B.1.1; cartons without a location last.
+export function locCompare(a, b) {
+  if (!a !== !b) return a ? -1 : 1;
+  return String(a).localeCompare(String(b), 'en', { numeric: true });
+}
+
+// The France stock report layout: one row per location + reference + quantity per carton.
+export function stockByLocation(stock, wh) {
+  const g = new Map();
+  for (const c of stock) {
+    if (wh && c.wh !== wh) continue;
+    const k = [c.loc, c.code, c.qty].join('|');
+    const row = g.get(k) || { loc: c.loc, code: c.code, ref: c.ref, desc: c.desc, unit: c.unit, perCarton: c.qty, cartons: 0, qty: 0, cids: [] };
+    row.cartons += 1; row.qty = round(row.qty + num(c.qty), 3); row.cids.push(c.cid);
+    g.set(k, row);
+  }
+  return [...g.values()].sort((a, b) => locCompare(a.loc, b.loc) || a.code.localeCompare(b.code) || b.perCarton - a.perCarton);
+}
+
+// "A.1.2" → rack "A"; "A01" → "A"; free text → its first part.
+export const rackOf = (loc) => (normLoc(loc).match(/^([A-Z]+)/) || [, normLoc(loc).split(/[.\-/]/)[0] || ''])[1];
+// "A.1.2" → "A. 1. 2" as written in the France report.
+export const locLabel = (loc) => (/^[A-Z]+(\.\d+)+$/.test(normLoc(loc)) ? normLoc(loc).split('.').join('. ') : normLoc(loc));

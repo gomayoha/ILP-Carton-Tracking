@@ -15,9 +15,9 @@
 <p>Open this page from the local server (e.g. http://127.0.0.1:8765/tests/run.html). Every line should be green.</p>
 <div id="out"></div>
 <script type="module">
-  import { split, notation, packingRows, totals, movementBlocks, recordCartons, fmtWO, validate, handNotation, perCartonNotation, receiptState, hasReceipt, scanGroups, packingListLines, cartonPallet, excelDate, pickFromLines, pickProgress } from '../src/model.js';
+  import { split, notation, packingRows, totals, movementBlocks, recordCartons, fmtWO, validate, handNotation, perCartonNotation, receiptState, hasReceipt, scanGroups, packingListLines, cartonPallet, excelDate, pickFromLines, pickProgress, currentStock, stockByLocation, rackOf, locLabel } from '../src/model.js';
   import { incrementDocNo, norm } from '../src/util.js';
-  import { parseScan, cartonPayload } from '../src/qr.js';
+  import { parseScan, cartonPayload, locationPayload } from '../src/qr.js';
   import { DEFAULT_SETTINGS } from '../src/store.js';
   import { sampleRecords } from '../src/sample.js';
 
@@ -162,6 +162,21 @@
   eq('supplier receipt → In-out detail (Pack) row', movementBlocks(inb, DEFAULT_SETTINGS)[0].rows[0], ['SUP-PL-1', 'STYLE-A', 'ILPTST00000001', 150000, 600, 'in', '2026-10-23', 'Test supplier', 'pnk0000001']);
   eq('supplier receipt needs a supplier', validate({ ...inb, supplier: '' }).length, 1);
   eq('valid supplier receipt passes', validate(inb), []);
+
+  // Storage: put away on shelves, stock by location (France report layout)
+  const recv = { id: 'RCV00001', type: 'inbound', docNo: 'R1', date: '2026-11-01', createdAt: 1, status: 'active', supplier: 'S', toWh: 'FR', scans: [],
+    lines: [{ ln: 1, code: 'ILPTST00000010', ref: 'REF-10', qty: 1000, ppc: 250, location: 'a. 1. 2' }, { ln: 2, code: 'ILPTST00000011', ref: 'REF-11', qty: 300, ppc: 100 }] };
+  const ids10 = recordCartons(recv).filter((c) => c.code === 'ILPTST00000010').map((c) => c.id);
+  const ids11 = recordCartons(recv).filter((c) => c.code === 'ILPTST00000011').map((c) => c.id);
+  const put = { id: 'PUT00001', type: 'putaway', docNo: 'PA1', date: '2026-11-02', createdAt: 2, status: 'active', toWh: 'FR', loc: 'B.3.1', scans: ids11.slice(0, 2).map((cid) => ({ cid, code: 'ILPTST00000011', qty: 100 })) };
+  const shipOut = { id: 'SHP00001', type: 'shipment', docNo: 'S1', date: '2026-11-03', createdAt: 3, status: 'active', fromWh: 'FR', lines: [], scans: [{ cid: ids10[0], code: 'ILPTST00000010', qty: 250 }] };
+  const st = stockByLocation(currentStock([shipOut, put, recv]), 'FR');
+  eq('stock by location after put away and a shipment', st.map((r) => [r.loc, r.ref, r.cartons, r.perCarton]), [['A.1.2', 'REF-10', 3, 250], ['B.3.1', 'REF-11', 2, 100], ['', 'REF-11', 1, 100]]);
+  eq('voided put away is ignored', stockByLocation(currentStock([recv, { ...put, status: 'void' }]), 'FR').map((r) => [r.loc, r.cartons]), [['A.1.2', 4], ['', 3]]);
+  eq('location helpers', [rackOf('A.1.2'), rackOf('A01'), locLabel('a.1.2'), locLabel('A01')], ['A', 'A', 'A. 1. 2', 'A01']);
+  eq('shelf label QR parses', parseScan(locationPayload('A.1.2')), { location: 'A.1.2' });
+  eq('put away needs a location and cartons', validate({ ...put, loc: '', scans: [] }).length, 2);
+  eq('valid put away passes', validate(put), []);
 
   out.insertAdjacentHTML('afterbegin', `<h2 class="${failed ? 'fail' : 'pass'}">${failed ? `${failed} failed, ${passed} passed` : `All ${passed} tests passed`}</h2>`);
   document.title = failed ? `✗ ${failed} failed` : `✓ ${passed} passed`;

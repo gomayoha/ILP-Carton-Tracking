@@ -71,6 +71,7 @@ export function RecordView({ id }) {
   const groups = scanGroups(rec);
   const isShip = rec.type === 'shipment';
   const isIn = rec.type === 'inbound';
+  const isPut = rec.type === 'putaway';
   const voided = rec.status === 'void';
   const wh = (code) => { const w = warehouse(s.settings, code); return tr(w.name, w.vi); };
   const rc = hasReceipt(rec) ? receiptState(rec) : null;
@@ -97,13 +98,14 @@ export function RecordView({ id }) {
   const head = {
     handoff: tr('Production handoff', 'Phiếu giao nhận thành phẩm'),
     inbound: tr('Supplier receipt', 'Phiếu nhập hàng từ nhà cung cấp'),
+    putaway: tr('Put away / move to shelf', 'Xếp hàng lên kệ'),
     transfer: tr('Warehouse transfer', 'Phiếu chuyển kho'),
     shipment: tr('Shipment · packing list', 'Xuất hàng · packing list'),
   }[rec.type];
 
   return html`
     <${PageHead} back="#/records" eyebrow=${head} title=${html`<span class="mono-title">${rec.docNo}</span>`}
-      sub=${html`${fmtDate(rec.date)} · ${isShip ? html`${rec.customer}${rec.shipTo ? ' → ' + rec.shipTo : ''}` : isIn ? html`${rec.supplier} → ${wh(rec.toWh)}` : html`${wh(rec.fromWh)} → ${wh(rec.toWh)}`}`}
+      sub=${html`${fmtDate(rec.date)} · ${isShip ? html`${rec.customer}${rec.shipTo ? ' → ' + rec.shipTo : ''}` : isIn ? html`${rec.supplier} → ${wh(rec.toWh)}` : isPut ? html`${wh(rec.toWh)} · ${tr('location', 'vị trí')} <b class="mono">${rec.loc}</b>` : html`${wh(rec.fromWh)} → ${wh(rec.toWh)}`}`}
       actions=${html`
         ${voided ? html`<${Chip} kind="bad" icon="ban">${tr('Voided', 'Đã hủy')}</${Chip}>` : html`<${Chip} kind="good" icon="check">${tr('Active', 'Hiệu lực')}</${Chip}>`}
         ${rc && !voided && (rc.status === 'received'
@@ -117,10 +119,10 @@ export function RecordView({ id }) {
     <div class="toolbar">
       ${rc && !voided && html`<${Btn} kind=${rc.status === 'received' ? '' : 'primary'} icon="scan" onClick=${() => setConfirm('receipt')}>${rc.status === 'received' ? tr('Recount / edit receipt', 'Đếm lại / sửa xác nhận') : tr('Confirm receipt (warehouse)', 'Xác nhận nhận hàng (kho)')}</${Btn}>`}
       ${cartons.length > 0 && html`<${Btn} kind="primary" icon="printer" onClick=${() => doPrintLabels(cartons)} disabled=${voided}>${tr('Print all labels', 'In tất cả nhãn')} (${cartons.length})</${Btn}>`}
-      <${Btn} icon="file" onClick=${doPrintDoc}>${isShip ? tr('Print packing list', 'In packing list') : tr('Print slip', 'In phiếu')}</${Btn}>
+      ${!isPut && html`<${Btn} icon="file" onClick=${doPrintDoc}>${isShip ? tr('Print packing list', 'In packing list') : tr('Print slip', 'In phiếu')}</${Btn}>`}
       ${isShip && html`<${Btn} icon="download" onClick=${() => downloadPackingList(rec)}>${tr('Packing list .xlsx', 'Packing list .xlsx')}</${Btn}>`}
-      <${Btn} icon="copy" onClick=${copyStock} disabled=${voided}>${tr('Copy rows for stock report', 'Sao chép dòng cho stock report')}</${Btn}>
-      <${Btn} icon="download" onClick=${() => downloadStockRows([rec], s.settings, rec.docNo)} disabled=${voided}>${tr('Stock rows .xlsx', 'Dòng stock .xlsx')}</${Btn}>
+      ${!isPut && html`<${Btn} icon="copy" onClick=${copyStock} disabled=${voided}>${tr('Copy rows for stock report', 'Sao chép dòng cho stock report')}</${Btn}>
+      <${Btn} icon="download" onClick=${() => downloadStockRows([rec], s.settings, rec.docNo)} disabled=${voided}>${tr('Stock rows .xlsx', 'Dòng stock .xlsx')}</${Btn}>`}
       <span class="toolbar-gap"></span>
       ${!voided && html`<a class="btn secondary" href=${'#/r/' + rec.id + '/edit'}><${Icon} name="edit" /><span>${tr('Edit', 'Sửa')}</span></a>`}
       <a class="btn secondary" href=${'#/new/' + rec.type + '?copy=' + rec.id}><${Icon} name="copy" /><span>${tr('Copy as new', 'Sao chép thành mới')}</span></a>

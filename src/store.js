@@ -18,7 +18,7 @@ export const DEFAULT_SETTINGS = {
     shipment: { fromWh: 'PACK' },
   },
   // Last number already used on paper. The app suggests the next one.
-  seeds: { handoff: '0001955', inbound: '', transfer: 'TF000000', shipment: 'IDE0004000' },
+  seeds: { handoff: '0001955', inbound: '', putaway: 'PA000000', transfer: 'TF000000', shipment: 'IDE0004000' },
   shippingMark: 'IDEA L PACK',
   origin: 'VIETNAM',
 };
@@ -178,7 +178,7 @@ export function docNoTaken(type, docNo, exceptId) {
 }
 
 export function nextDocNo(type) {
-  const seed = state.settings.seeds?.[type] || '';
+  const seed = state.settings.seeds?.[type] || DEFAULT_SETTINGS.seeds[type] || '';
   const recs = [...state.records.values()].filter((r) => r.type === type && r.docNo).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
   // Highest number that follows the same pattern as the most recent one (e.g. "IDE#######").
   const pattern = (s) => String(s).replace(/\d+/g, '#');
@@ -193,15 +193,16 @@ export function nextDocNo(type) {
 }
 
 export function newRecord(type) {
-  const d = state.settings.defaults?.[type] || (type === 'inbound' ? { toWh: state.settings.defaults?.shipment?.fromWh || 'PACK' } : {});
+  const d = state.settings.defaults?.[type] || (type === 'inbound' || type === 'putaway' ? { toWh: state.settings.defaults?.shipment?.fromWh || 'PACK' } : {});
   const rec = {
     id: newId(8), type, docNo: nextDocNo(type), date: today(), status: 'active',
-    fromWh: type === 'inbound' ? '' : (d.fromWh || ''), toWh: type === 'shipment' ? '' : (d.toWh || ''),
+    fromWh: type === 'inbound' || type === 'putaway' ? '' : (d.fromWh || ''), toWh: type === 'shipment' ? '' : (d.toWh || ''),
     lines: [], scans: [], nextLn: 1, note: '',
   };
   if (type === 'handoff') Object.assign(rec, { deliveredBy: '', receivedBy: '', noteNo: '' });
   if (type === 'transfer') Object.assign(rec, { extRef: '', outNoteNo: '', noteNo: '' });
   // Supplier receipt: docNo = the supplier's packing list / invoice no.; extRef = our PO to the supplier.
+  if (type === 'putaway') Object.assign(rec, { loc: '' });
   if (type === 'inbound') Object.assign(rec, { supplier: '', extRef: '', noteNo: '', receivedBy: '', origin: '' });
   if (type === 'shipment') Object.assign(rec, {
     customer: '', shipTo: '', contact: '', salesperson: '', noteNo: '',
@@ -296,9 +297,9 @@ export function cartonLocation(cid) {
   if (!found || !found.carton) return null;
   const moves = cartonMovements(cid);
   const last = moves[moves.length - 1];
-  if (last) return last.type === 'shipment' ? { shipped: true, rec: last } : { wh: last.toWh, rec: last };
+  if (last) return last.type === 'shipment' ? { shipped: true, rec: last } : { wh: last.toWh, loc: last.type === 'putaway' ? last.loc : '', rec: last };
   if (found.rec.type === 'shipment') return { shipped: true, rec: found.rec, isShippingLabel: true };
-  return { wh: found.rec.toWh, rec: found.rec };
+  return { wh: found.rec.toWh, loc: found.carton.location || '', rec: found.rec };
 }
 
 export function allCartonsCount() {

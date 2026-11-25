@@ -5,7 +5,7 @@ import { tr } from '../i18n.js';
 import { useStore, getRecord, newRecord, saveRecord, docNoTaken, nextDocNo, findCarton, cartonLocation, toast, state } from '../store.js';
 import { Icon, Btn, Field, Input, NumInput, Select, ItemPicker, WhSelect, PageHead, Modal, Chip } from '../components.js';
 import { UNITS, FSC, perCartonNotation, handNotation, split, notation, totals, validate, typeName, scanGroups, unitLabel, recordCartons, pickFromLines, pickProgress } from '../model.js';
-import { num, round, fmtNum, fmtDec, newId, today, clean, go } from '../util.js';
+import { num, round, fmtNum, fmtDec, newId, today, clean, go, normLoc } from '../util.js';
 import { parseScan } from '../qr.js';
 import { Scanner, feedback } from './scanner.js';
 import { printLabels } from '../print.js';
@@ -104,6 +104,10 @@ function ScanModal({ recRef, setRec, onClose }) {
   const onCode = (text) => {
     const cur = recRef.current;
     const p = parseScan(text);
+    if (p && p.location && cur.type === 'putaway') {
+      const next = { ...cur, loc: normLoc(p.location) }; recRef.current = next; setRec(next);
+      feedback(true); add(`${tr('Location', 'Vị trí')} ${normLoc(p.location)}`, 'good'); return;
+    }
     if (!p || !p.cartonId) { feedback(false); add(tr('Not a carton label', 'Không phải nhãn thùng'), 'bad'); return; }
     const f = findCarton(p.cartonId);
     if (!f || !f.carton) { feedback(false); add(`${p.cartonId} — ${tr('not found', 'không tìm thấy')}`, 'bad'); return; }
@@ -129,6 +133,7 @@ function ScanModal({ recRef, setRec, onClose }) {
     }
     const loc = cartonLocation(p.cartonId);
     if (loc?.shipped) { feedback(false); add(`${p.cartonId} — ${tr('added, but it was already shipped in', 'đã thêm, nhưng thùng đã xuất trong')} ${loc.rec.docNo}`, 'warn'); return; }
+    if (loc && cur.type === 'putaway' && loc.wh && loc.wh !== cur.toWh) { feedback(true); add(`${c.code} · ${fmtNum(c.qty)} — ${tr('added, but the system shows it in', 'đã thêm, nhưng hệ thống ghi nhận đang ở')} ${loc.wh}`, 'warn'); return; }
     if (loc && cur.fromWh && loc.wh && loc.wh !== cur.fromWh) { feedback(true); add(`${c.code} · ${fmtNum(c.qty)} — ${tr('added, but the system shows it in', 'đã thêm, nhưng hệ thống ghi nhận đang ở')} ${loc.wh}`, 'warn'); return; }
     feedback(true);
     add(`${c.code} · ${fmtNum(c.qty)} — ${tr('added', 'đã thêm')}`, 'good');
@@ -267,7 +272,7 @@ export function RecordForm({ type: typeProp, editId, copyFrom }) {
       if (d && d.type === typeProp && ((d.lines || []).length || (d.scans || []).length)) { setTimeout(() => setRestored(true)); return { ...d, docNo: docNoTaken(typeProp, d.docNo) ? nextDocNo(typeProp) : d.docNo }; }
     } catch {}
     const r = newRecord(typeProp);
-    r.lines = typeProp === 'transfer' || typeProp === 'inbound' ? [] : [blankLine(1)];
+    r.lines = typeProp === 'transfer' || typeProp === 'inbound' || typeProp === 'putaway' ? [] : [blankLine(1)];
     r.nextLn = r.lines.length ? 2 : 1;
     return r;
   });
@@ -294,15 +299,21 @@ export function RecordForm({ type: typeProp, editId, copyFrom }) {
   const labels = recordCartons(rec).length;
   const printedBefore = editing && editing.printed && editing.printed.labels;
 
-  const save = (andPrint) => {
-    const clean_ = { ...rec, lines: rec.lines.filter((l) => clean(l.code) || num(l.qty) > 0).map((l) => ({ ...l, code: clean(l.code).toUpperCase() })) };
+  const save = (andPrint, nextShelf) => {
+    const clean_ = { ...rec, ...(type === 'putaway' ? { loc: normLoc(rec.loc) } : {}), lines: rec.lines.filter((l) => clean(l.code) || num(l.qty) > 0).map((l) => ({ ...l, code: clean(l.code).toUpperCase() })) };
     const errs = validate(clean_, { docNoTaken: !!taken });
     setErrors(errs);
     if (errs.length) { window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
     const saved = saveRecord(clean_, editing ? 'edited' : 'created');
     if (!editing) try { localStorage.removeItem(draftKey(type)); } catch {}
-    toast(tr(`${typeName(type)} ${saved.docNo} saved.`, `Đã lưu ${typeName(type).toLowerCase()} ${saved.docNo}.`));
-    go('/r/' + saved.id);
+    toast(type === 'putaway' ? tr(`${saved.scans.length} cartons put on ${saved.loc}.`, `Đã xếp ${saved.scans.length} thùng lên ${saved.loc}.`) : tr(`${typeName(type)} ${saved.docNo} saved.`, `Đã lưu ${typeName(type).toLowerCase()} ${saved.docNo}.`));
+    if (nextShelf) {
+      // Straight on to the next shelf in the same warehouse.
+      const r = newRecord('putaway'); r.toWh = saved.toWh;
+      setRec(r); setErrors([]); window.scrollTo(0, 0); setScanOpen(true);
+      return;
+    }
+    go(type === 'putaway' ? '/stock' : '/r/' + saved.id);
     if (andPrint) {
       const cartons = recordCartons(saved);
       if (cartons.length) setTimeout(() => printLabels(saved, cartons, state.device), 300);
@@ -312,7 +323,7 @@ export function RecordForm({ type: typeProp, editId, copyFrom }) {
   const discardDraft = () => {
     try { localStorage.removeItem(draftKey(type)); } catch {}
     const r = newRecord(type);
-    r.lines = type === 'transfer' || type === 'inbound' ? [] : [blankLine(1)];
+    r.lines = type === 'transfer' || type === 'inbound' || type === 'putaway' ? [] : [blankLine(1)];
     r.nextLn = r.lines.length ? 2 : 1;
     setRec(r); setRestored(false);
   };
@@ -320,6 +331,7 @@ export function RecordForm({ type: typeProp, editId, copyFrom }) {
   const wh = s.settings.warehouses;
   const titles = {
     handoff: [tr('Production handoff', 'Giao nhận thành phẩm'), tr('Replaces the paper slip "Phiếu Giao Nhận Thành Phẩm". Each carton gets a QR label.', 'Thay cho phiếu giấy "Phiếu Giao Nhận Thành Phẩm". Mỗi thùng có một nhãn QR.')],
+    putaway: [tr('Put away / move to shelf', 'Xếp hàng lên kệ'), tr('Scan the shelf label (or type the location), then scan every carton you put there. Use it again when cartons move to another shelf.', 'Quét nhãn kệ (hoặc nhập vị trí), rồi quét từng thùng đặt ở đó. Dùng lại khi thùng chuyển sang kệ khác.')],
     inbound: [tr('Supplier receipt', 'Nhập hàng từ nhà cung cấp'), tr('Goods arriving from a supplier. Upload the supplier\'s packing list: each carton gets a QR label, then the warehouse scans to confirm receipt.', 'Hàng nhập từ nhà cung cấp. Tải packing list của nhà cung cấp: mỗi thùng có một nhãn QR, sau đó kho quét để xác nhận nhận hàng.')],
     transfer: [tr('Warehouse transfer', 'Chuyển kho'), tr('Scan the labelled cartons that are moving. Unlabelled goods can be added as lines and get labels now.', 'Quét các thùng đã có nhãn được chuyển đi. Hàng chưa có nhãn có thể thêm thành dòng và in nhãn ngay.')],
     shipment: [tr('Shipment / packing list', 'Xuất hàng / packing list'), tr('Scan the production cartons that ship as they are. Only goods repacked into new cartons are entered below and get new labels.', 'Quét các thùng sản xuất xuất nguyên. Chỉ hàng đóng lại thùng mới được nhập bên dưới và in nhãn mới.')],
@@ -333,15 +345,17 @@ export function RecordForm({ type: typeProp, editId, copyFrom }) {
 
     <div class="card form-card">
       <div class="form-grid">
-        <${Field} label=${type === 'handoff' ? tr('Slip no. (Số)', 'Số phiếu') : type === 'shipment' ? tr('Invoice / packing no.', 'Số invoice / packing') : type === 'inbound' ? tr('Supplier packing list / invoice no.', 'Số packing list / invoice của NCC') : tr('Transfer no.', 'Số phiếu chuyển')} required
+        ${type === 'putaway' && html`<${Field} label=${tr('Location (shelf)', 'Vị trí (kệ)')} required hint=${tr('e.g. A.1.2 = rack A, level 1, position 2', 'vd. A.1.2 = kệ A, tầng 1, ô 2')}>
+          <${Input} value=${rec.loc} onInput=${(v) => set({ loc: v.toUpperCase() })} cls="mono" placeholder="A.1.2" /></${Field}>`}
+        <${Field} label=${type === 'handoff' ? tr('Slip no. (Số)', 'Số phiếu') : type === 'shipment' ? tr('Invoice / packing no.', 'Số invoice / packing') : type === 'inbound' ? tr('Supplier packing list / invoice no.', 'Số packing list / invoice của NCC') : type === 'putaway' ? tr('Move no.', 'Số phiếu') : tr('Transfer no.', 'Số phiếu chuyển')} required
           error=${taken ? tr(`Already used by ${taken.docNo} on ${taken.date}`, `Đã dùng cho phiếu ngày ${taken.date}`) : ''}
           hint=${type === 'handoff' && !editing ? tr('Continues the paper slip numbering', 'Tiếp nối số phiếu giấy') : ''}>
           <${Input} value=${rec.docNo} onInput=${(v) => set({ docNo: v })} cls="mono" />
         </${Field}>
         <${Field} label=${tr('Date', 'Ngày')} required><${Input} type="date" value=${rec.date} onInput=${(v) => set({ date: v })} /></${Field}>
-        ${type === 'inbound' ? html`<${Field} label=${tr('Supplier', 'Nhà cung cấp')} required><${Input} value=${rec.supplier} onInput=${(v) => set({ supplier: v })} /></${Field}>`
+        ${type === 'putaway' ? '' : type === 'inbound' ? html`<${Field} label=${tr('Supplier', 'Nhà cung cấp')} required><${Input} value=${rec.supplier} onInput=${(v) => set({ supplier: v })} /></${Field}>`
           : html`<${Field} label=${tr('From', 'Từ')}><${WhSelect} value=${rec.fromWh} onChange=${(v) => set({ fromWh: v })} warehouses=${wh} /></${Field}>`}
-        ${type !== 'shipment' && html`<${Field} label=${type === 'inbound' ? tr('Receiving warehouse', 'Kho nhận') : tr('To', 'Đến')}><${WhSelect} value=${rec.toWh} onChange=${(v) => set({ toWh: v })} warehouses=${wh} /></${Field}>`}
+        ${type !== 'shipment' && html`<${Field} label=${type === 'inbound' ? tr('Receiving warehouse', 'Kho nhận') : type === 'putaway' ? tr('Warehouse', 'Kho') : tr('To', 'Đến')}><${WhSelect} value=${rec.toWh} onChange=${(v) => set({ toWh: v })} warehouses=${wh} /></${Field}>`}
         ${type === 'handoff' && html`
           <${Field} label=${tr('Delivered by', 'Người giao (xuất)')}><${Input} value=${rec.deliveredBy} onInput=${(v) => set({ deliveredBy: v })} /></${Field}>
           <${Field} label=${tr('Received by', 'Người nhận')} hint=${tr('Optional — the warehouse confirms receipt on the saved slip', 'Tùy chọn — kho xác nhận nhận hàng trên phiếu đã lưu')}><${Input} value=${rec.receivedBy} onInput=${(v) => set({ receivedBy: v })} /></${Field}>
@@ -371,28 +385,30 @@ export function RecordForm({ type: typeProp, editId, copyFrom }) {
     ${type === 'shipment' && html`<${PickList} rec=${rec} setRec=${setRec} />`}
     ${type !== 'handoff' && type !== 'inbound' && html`<div class="scan-cta">
       <${Btn} kind="primary" icon="scan" onClick=${() => setScanOpen(true)}>${tr('Scan cartons', 'Quét thùng')}</${Btn}>
-      <span class="muted">${type === 'transfer' ? tr('Fastest way: scan every carton that is moving.', 'Cách nhanh nhất: quét từng thùng được chuyển.') : tr('Scan the production cartons being shipped — they keep their original labels and QR.', 'Quét các thùng sản xuất được xuất đi — giữ nguyên nhãn và QR ban đầu.')}</span>
+      <span class="muted">${type === 'putaway' ? tr('Scan the shelf label first, then each carton on that shelf.', 'Quét nhãn kệ trước, rồi từng thùng trên kệ đó.') : type === 'transfer' ? tr('Fastest way: scan every carton that is moving.', 'Cách nhanh nhất: quét từng thùng được chuyển.') : tr('Scan the production cartons being shipped — they keep their original labels and QR.', 'Quét các thùng sản xuất được xuất đi — giữ nguyên nhãn và QR ban đầu.')}</span>
     </div>`}
     <${ScannedList} rec=${rec} setRec=${setRec} />
 
-    <div class="block-title lines-title"><h3>${type === 'inbound' ? tr('Items on the packing list', 'Hàng trên packing list') : type === 'transfer' ? tr('Unlabelled goods', 'Hàng chưa có nhãn') : type === 'shipment' ? tr('Repacked into new cartons (new labels)', 'Đóng lại vào thùng mới (nhãn mới)') : tr('Items', 'Mã hàng')}</h3>
+    ${type !== 'putaway' && html`<div class="block-title lines-title"><h3>${type === 'inbound' ? tr('Items on the packing list', 'Hàng trên packing list') : type === 'transfer' ? tr('Unlabelled goods', 'Hàng chưa có nhãn') : type === 'shipment' ? tr('Repacked into new cartons (new labels)', 'Đóng lại vào thùng mới (nhãn mới)') : tr('Items', 'Mã hàng')}</h3>
       <span>${rec.lines.length} ${tr(rec.lines.length === 1 ? 'line' : 'lines', 'dòng')}</span></div>
     <div class="lines">
       ${rec.lines.map((l, i) => html`<${LineCard} key=${l.ln} line=${l} idx=${i} type=${type} onChange=${(nl) => setLine(i, nl)} onRemove=${() => removeLine(i)} onDuplicate=${() => dupLine(i)} />`)}
     </div>
-    <${Btn} icon="plus" onClick=${addLine} cls="add-line">${tr('Add item', 'Thêm mã hàng')}</${Btn}>
+    <${Btn} icon="plus" onClick=${addLine} cls="add-line">${tr('Add item', 'Thêm mã hàng')}</${Btn}>`}
 
     <div class="form-bar">
       <div class="form-totals">
         <div><b>${fmtNum(t.qty, t.qty % 1 ? 2 : 0)}</b><small>${t.unit ? unitLabel(t.unit) : tr('total qty', 'tổng SL')}</small></div>
         <div><b>${t.cartons}</b><small>${tr('cartons', 'thùng')}</small></div>
-        ${type === 'inbound' ? html`<div><b>${labels}</b><small>${tr('new labels', 'nhãn mới')}</small></div><div><b>${fmtDec(t.gw, 2)}</b><small>G.W kg</small></div>`
+        ${type === 'putaway' ? html`<div><b class="mono">${normLoc(rec.loc) || '—'}</b><small>${tr('location', 'vị trí')}</small></div>`
+          : type === 'inbound' ? html`<div><b>${labels}</b><small>${tr('new labels', 'nhãn mới')}</small></div><div><b>${fmtDec(t.gw, 2)}</b><small>G.W kg</small></div>`
           : type === 'shipment' ? html`<div><b>${fmtDec(t.gw, 2)}</b><small>G.W kg</small></div><div><b>${fmtDec(t.cbm, 3)}</b><small>CBM</small></div>`
           : html`<div><b>${labels}</b><small>${tr('new labels', 'nhãn mới')}</small></div>`}
       </div>
       <div class="form-buttons">
         <${Btn} onClick=${() => history.back()}>${tr('Cancel', 'Hủy')}</${Btn}>
         <${Btn} onClick=${() => save(false)}>${tr('Save', 'Lưu')}</${Btn}>
+        ${type === 'putaway' && html`<${Btn} kind="primary" icon="shelf" onClick=${() => save(false, true)}>${tr('Save & next shelf', 'Lưu & kệ tiếp theo')}</${Btn}>`}
         ${labels > 0 && html`<${Btn} kind="primary" icon="printer" onClick=${() => save(true)}>${tr('Save & print labels', 'Lưu & in nhãn')}</${Btn}>`}
       </div>
     </div>

@@ -13,6 +13,7 @@ import { ItemsPage } from './views/items.js';
 import { SettingsPage } from './views/settings.js';
 import { CartonPage } from './views/carton.js';
 import { LoginPage } from './views/login.js';
+import { StockPage } from './views/stock.js';
 
 function parseHash() {
   const h = location.hash.replace(/^#\/?/, '');
@@ -49,6 +50,7 @@ const NAV = [
   { key: '', icon: 'home', en: 'Home', vi: 'Trang chủ' },
   { key: 'scan', icon: 'scan', en: 'Scan', vi: 'Quét mã' },
   { key: 'records', icon: 'list', en: 'Records', vi: 'Chứng từ' },
+  { key: 'stock', icon: 'shelf', en: 'Stock', vi: 'Tồn kho' },
   { key: 'items', icon: 'box', en: 'Items', vi: 'Mã hàng' },
   { key: 'settings', icon: 'settings', en: 'Settings', vi: 'Cài đặt' },
 ];
@@ -71,6 +73,7 @@ function App() {
   else if (p0 === 'r' && p1 && p2 === 'edit') view = html`<${RecordForm} key=${'edit-' + p1} editId=${p1} />`;
   else if (p0 === 'r' && p1) view = html`<${RecordView} key=${p1} id=${p1} />`;
   else if (p0 === 'c' && p1) view = html`<${CartonPage} key=${p1} cid=${p1} />`;
+  else if (p0 === 'stock') view = html`<${StockPage} />`;
   else if (p0 === 'items') view = html`<${ItemsPage} />`;
   else if (p0 === 'settings') view = html`<${SettingsPage} />`;
   else view = html`<div class="empty"><h4>${tr('Page not found', 'Không tìm thấy trang')}</h4><p><a href="#/">${tr('Go home', 'Về trang chủ')}</a></p></div>`;
@@ -101,6 +104,7 @@ function App() {
             <a href="#/new/handoff"><${Icon} name="inbox" />${tr('Production handoff', 'Giao nhận thành phẩm')}</a>
             <a href="#/new/inbound"><${Icon} name="upload" />${tr('Supplier receipt', 'Nhập hàng NCC')}</a>
             <a href="#/new/transfer"><${Icon} name="swap" />${tr('Warehouse transfer', 'Chuyển kho')}</a>
+            <a href="#/new/putaway"><${Icon} name="shelf" />${tr('Put away / move to shelf', 'Xếp hàng lên kệ')}</a>
             <a href="#/new/shipment"><${Icon} name="truck" />${tr('Shipment / packing list', 'Xuất hàng / packing list')}</a>
           </div>`}
         </div>
@@ -109,7 +113,7 @@ function App() {
     ${s.mode === 'cloud' && s.sync.error === 'permission' && html`<div class="banner bad shell"><${Icon} name="alert" />${tr('The database refused access. Check the Firestore rules (see docs/SETUP.md) or sign in again.', 'Cơ sở dữ liệu từ chối truy cập. Kiểm tra Firestore rules (xem docs/SETUP.md) hoặc đăng nhập lại.')}</div>`}
     <main id="main" class="shell" tabindex="-1">${view}</main>
     <nav class="bottombar" aria-label=${tr('Main', 'Chính')}>
-      ${[NAV[0], NAV[2], NAV[1], NAV[3], NAV[4]].map((n) => html`<a href=${'#/' + n.key} class=${n.key === 'scan' ? 'scan-btn' : ''} aria-current=${active === n.key ? 'page' : undefined}><${Icon} name=${n.icon} /><span>${tr(n.en, n.vi)}</span></a>`)}
+      ${[NAV[0], NAV[2], NAV[1], NAV[3], NAV[5]].map((n) => html`<a href=${'#/' + n.key} class=${n.key === 'scan' ? 'scan-btn' : ''} aria-current=${active === n.key ? 'page' : undefined}><${Icon} name=${n.icon} /><span>${tr(n.en, n.vi)}</span></a>`)}
     </nav>
     <footer class="app-foot shell">
       <span>© ${new Date().getFullYear()} Idea L Pack</span><span>${tr('Carton QR tracking', 'Theo dõi thùng bằng mã QR')}</span><span>INTERNAL USE</span>

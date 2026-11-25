@@ -35,7 +35,7 @@ export function CartonResult({ cid, compact }) {
     ? html`<${Chip} kind="bad" icon="ban">${tr('Record voided', 'Chứng từ đã hủy')}</${Chip}>`
     : loc?.shipped
       ? html`<${Chip} kind="info" icon="truck">${tr('Shipped', 'Đã xuất')} · ${loc.rec.docNo}</${Chip}>`
-      : html`<${Chip} kind="good" icon="check">${tr('In', 'Tại')} ${wh(loc?.wh)}</${Chip}>`;
+      : html`<${Chip} kind="good" icon="check">${tr('In', 'Tại')} ${wh(loc?.wh)}${loc?.loc ? ' · ' + loc.loc : ''}</${Chip}>`;
 
   return html`<div class=${'card result ' + (voided ? 'void' : '')}>
     <div class="result-head">
@@ -66,8 +66,8 @@ export function CartonResult({ cid, compact }) {
         <li><span class="dot good"></span><div><b>${rec.type === 'shipment' ? tr('Packed for shipment', 'Đóng gói xuất hàng') : tr('Labelled', 'Dán nhãn')} — ${typeName(rec.type)}</b>
           <small>${fmtDate(rec.date)} · ${rec.docNo}${rec.type === 'inbound' ? ` · ${rec.supplier} → ${rec.toWh}` : rec.type !== 'shipment' ? ` · ${rec.fromWh} → ${rec.toWh}` : ` · ${rec.customer}`}</small></div></li>
         ${moves.map((m) => html`<li><span class=${'dot ' + (m.type === 'shipment' ? 'info' : 'good')}></span><div>
-          <b>${m.type === 'shipment' ? tr('Shipped', 'Đã xuất hàng') : tr('Transferred', 'Đã chuyển kho')} — <a class="link" href=${'#/r/' + m.id}>${m.docNo}</a></b>
-          <small>${fmtDate(m.date)} · ${m.type === 'shipment' ? m.customer : `${m.fromWh} → ${m.toWh}`}</small></div></li>`)}
+          <b>${m.type === 'shipment' ? tr('Shipped', 'Đã xuất hàng') : m.type === 'putaway' ? tr(`Put on shelf ${m.loc}`, `Xếp lên kệ ${m.loc}`) : tr('Transferred', 'Đã chuyển kho')} — <a class="link" href=${'#/r/' + m.id}>${m.docNo}</a></b>
+          <small>${fmtDate(m.date)} · ${m.type === 'shipment' ? m.customer : m.type === 'putaway' ? m.toWh : `${m.fromWh} → ${m.toWh}`}</small></div></li>`)}
       </ol>
     </div>`}
     <div class="result-actions">

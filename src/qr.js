@@ -32,10 +32,15 @@ export function cartonPayload(carton, mode = 'link') {
 
 export const recordPayload = (rec) => `${appBaseUrl()}#/r/${rec.id}`;
 
-// Accepts anything a scanner can produce and returns { cartonId } or { recordId } or null.
+// Shelf location labels: "ILP-LOC:A.1.2".
+export const locationPayload = (loc) => `ILP-LOC:${loc}`;
+
+// Accepts anything a scanner can produce and returns { cartonId } or { recordId } or { location } or null.
 export function parseScan(text) {
   const s = String(text || '').trim().toUpperCase();
   if (!s) return null;
+  const l = s.match(/^ILP-LOC:(\S+)$/);
+  if (l) return { location: l[1] };
   const m = s.match(ID_RE);
   if (m) return { cartonId: `${m[1]}-${Number(m[2])}-${Number(m[3])}`, recordId: m[1], line: Number(m[2]), seq: Number(m[3]) };
   const r = String(text).match(REC_RE);
