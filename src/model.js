@@ -116,7 +116,7 @@ export function recordCartons(rec) {
         fsc: line.fsc || '', perCarton: perCartonNotation(line.ppc, line.bundle),
         lineQty: num(line.qty), lineNotation: handNotation(line.qty, line.ppc),
         shipDate: rec.shipDate || rec.date,
-        pallet: cartonPallet(line, i),
+        pallet: cartonPallet(line, i), location: line.location || '', entity: line.entity || '',
       });
     }
   }
@@ -355,18 +355,25 @@ export function validate(rec, { docNoTaken } = {}) {
 
 const key = (s) => norm(s).replace(/[^a-z0-9]/g, '');
 const PL_COLS = [
-  ['code', (k) => ['internalcode', 'interalcode', 'ilpcode', 'sku', 'itemcode', 'mahang'].includes(k) || k.startsWith('internalcode')],
-  ['po', (k) => ['customerpo', 'po', 'pono', 'ponumber', 'purchaseorder'].includes(k) || k.startsWith('customerpo')],
-  ['ref', (k) => ['customerstyle', 'customercode', 'customerref', 'reference', 'referenceno', 'refno', 'makhachhang', 'makh'].some((x) => k.startsWith(x))],
-  ['desc', (k) => k.startsWith('description') || k.startsWith('tenhang')],
+  ['code', (k) => ['internalcode', 'interalcode', 'ilpcode', 'sku', 'itemcode', 'mahang', 'ideaitemno', 'ideaitem', 'ourref'].includes(k) || k.startsWith('internalcode')],
+  ['po', (k) => ['customerpo', 'po', 'pono', 'purchaseorder'].includes(k) || k.startsWith('customerpo') || k.startsWith('ponumber')],
+  ['ref', (k) => ['customerstyle', 'customercode', 'customerref', 'customeritemno', 'yourref', 'reference', 'referenceno', 'refno', 'makhachhang', 'makh'].some((x) => k.startsWith(x))],
+  ['desc', (k) => k.startsWith('description') || k.startsWith('tenhang') || k === 'productname'],
   ['uoms', (k) => k.startsWith('numberofuom') || ['cartons', 'ctns', 'noofcartons', 'numberofcartons', 'sothung', 'cartonqty'].includes(k)],
-  ['ppc', (k) => k.startsWith('qtyuom') || ['pcscarton', 'pcsctn', 'qtycarton', 'qtyctn', 'pcsbox', 'qtybox'].includes(k)],
-  ['qty', (k) => k.startsWith('orderqty') || ['qty', 'quantity', 'quantitypc', 'quantitypcs', 'shippedqty', 'totalqty', 'qtypcs', 'soluong'].includes(k)],
+  ['ppc', (k) => k.startsWith('qtyuom') || k.startsWith('quantityuom') || ['pcscarton', 'pcsctn', 'qtycarton', 'qtyctn', 'pcsbox', 'qtybox'].includes(k)],
+  ['qty', (k) => k.startsWith('orderqty') || ['qty', 'quantity', 'quantitypc', 'quantitypcs', 'shippedqty', 'totalqty', 'totalquantity', 'qtypcs', 'soluong',
+    'quantityreceive', 'quantityreceived', 'qtyreceive', 'qtyreceived', 'receivedqty'].includes(k)],
   ['nw', (k) => (k.startsWith('netweight') || k.startsWith('nw')) && !k.includes('pallet')],
   ['gw', (k) => (k.startsWith('grossweight') || k.startsWith('gw')) && !k.includes('pallet')],
-  ['l', (k) => !k.includes('pallet') && (k === 'l' || k.startsWith('l1carton') || k === 'lcm' || k === 'length')],
-  ['w', (k) => !k.includes('pallet') && (k === 'w' || k.startsWith('w1carton') || k === 'wcm' || k === 'width')],
-  ['h', (k) => !k.includes('pallet') && (k === 'h' || k.startsWith('h1carton') || k === 'hcm' || k === 'height')],
+  ['l', (k) => !k.includes('pallet') && (k === 'l' || k.startsWith('l1carton') || ['lcm', 'length', 'lengthcm', 'lenght', 'lenghtcm'].includes(k))],
+  ['w', (k) => !k.includes('pallet') && (k === 'w' || k.startsWith('w1carton') || ['wcm', 'width', 'widthcm'].includes(k))],
+  ['h', (k) => !k.includes('pallet') && (k === 'h' || k.startsWith('h1carton') || ['hcm', 'height', 'heightcm'].includes(k))],
+  ['location', (k) => ['location', 'vitri', 'loc', 'binlocation'].includes(k)],
+  ['entity', (k) => ['entities', 'entity', 'company'].includes(k)],
+  ['supplierName', (k) => ['suppliername', 'supliername', 'supplier', 'nhacungcap'].includes(k)],
+  ['supplierCode', (k) => ['suppliercode', 'supliercode'].includes(k)],
+  ['unit', (k) => ['unitcode', 'uom', 'unit', 'dvt', 'donvitinh'].includes(k)],
+  ['date', (k) => ['stockindate', 'receivedate', 'receiveddate', 'dateofreceipt', 'ngaynhap'].includes(k)],
   ['perPallet', (k) => ['boxespallet', 'boxpallet', 'ctnspallet', 'cartonspallet', 'ctnpallet'].includes(k)],
   ['pallet', (k) => ['palletno', 'palletnumber', 'palletnos'].includes(k)],
 ];
@@ -402,6 +409,8 @@ export function packingListLines(rows, { firstLn = 1 } = {}) {
   if (!col) return { lines: [], warnings: [tr('No packing list header found (needs at least Internal code and Quantity columns).', 'Không tìm thấy dòng tiêu đề packing list (cần ít nhất cột Internal code và Số lượng).')] };
   const lines = [];
   const warnings = [];
+  const suppliers = new Set(), dates = new Set();
+  let noQty = 0;
   let ln = firstLn;
   for (let r = start; r < rows.length; r++) {
     const row = rows[r] || [];
@@ -412,16 +421,35 @@ export function packingListLines(rows, { firstLn = 1 } = {}) {
     const uoms = num(get('uoms'));
     if (!qty && uoms && ppc) qty = round(uoms * ppc, 3);
     if (!ppc && uoms && qty && Number.isInteger(round(qty / uoms, 6))) ppc = round(qty / uoms, 6);
+    // A stock-in sheet with pcs/carton but the received quantity still empty: count it as one full carton.
+    if (!qty && !uoms && ppc > 0) { qty = ppc; noQty++; }
     if (!(qty > 0)) continue;
+    const sup = txt(get('supplierName')) || txt(get('supplierCode'));
+    if (sup) suppliers.add(sup);
+    const d = excelDate(get('date'));
+    if (d) dates.add(d);
     const sp = split(qty, ppc);
     if (uoms && sp.count && sp.count !== uoms) warnings.push(tr(`Row ${r + 1} (${code}): the list says ${uoms} cartons, but ${fmtNum(qty)} ÷ ${fmtNum(ppc)} gives ${sp.count}.`, `Dòng ${r + 1} (${code}): packing list ghi ${uoms} thùng, nhưng ${fmtNum(qty)} ÷ ${fmtNum(ppc)} = ${sp.count} thùng.`));
     const n = (f) => (num(get(f)) > 0 ? num(get(f)) : '');
     lines.push({
-      ln: ln++, code, ref: txt(get('ref')), desc: txt(get('desc')), unit: 'piece', qty, ppc: ppc || '', reqQty: '', wo: '', po: txt(get('po')),
+      ln: ln++, code, ref: txt(get('ref')), desc: txt(get('desc')), unit: unitCode(get('unit')), qty, ppc: ppc || '', reqQty: '', wo: '', po: txt(get('po')),
       nw: n('nw'), gw: n('gw'), pnw: '', pgw: '', l: n('l'), w: n('w'), h: n('h'), printDate: '', packDate: '', fsc: '', bundle: '',
-      pallet: txt(get('pallet')), perPallet: n('perPallet'),
+      pallet: txt(get('pallet')), perPallet: n('perPallet'), location: txt(get('location')).toUpperCase(), entity: txt(get('entity')),
     });
   }
+  if (noQty) warnings.push(tr(`${noQty} rows have no quantity received — each was counted as 1 full carton. Please check.`, `${noQty} dòng chưa có số lượng nhận — mỗi dòng được tính là 1 thùng đủ. Vui lòng kiểm tra.`));
   if (!lines.length) warnings.push(tr('The header was found but no item rows with a quantity.', 'Đã thấy dòng tiêu đề nhưng không có dòng hàng nào có số lượng.'));
-  return { lines, warnings };
+  return { lines, warnings, supplier: suppliers.size === 1 ? [...suppliers][0] : '', date: dates.size === 1 ? [...dates][0] : '' };
+}
+
+const UNIT_MAP = { pcs: 'piece', pc: 'piece', pce: 'piece', piece: 'piece', cai: 'piece', box: 'box', hop: 'box', set: 'set', bo: 'set', roll: 'roll', cuon: 'roll', sheet: 'sheet', to: 'sheet', ream: 'ream', pair: 'pair', kg: 'kg' };
+const unitCode = (v) => UNIT_MAP[norm(v).replace(/[^a-z]/g, '')] || 'piece';
+
+// Excel dates arrive as serial numbers (raw) or Date objects; text like 01/11/2026 is day-first.
+export function excelDate(v) {
+  if (v instanceof Date && !isNaN(v)) return v.toISOString().slice(0, 10);
+  if (typeof v === 'number' && v > 20000 && v < 80000) return new Date(Math.round((v - 25569) * 864e5)).toISOString().slice(0, 10);
+  const m = clean(v).match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/);
+  if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+  return /^\d{4}-\d{2}-\d{2}/.test(clean(v)) ? clean(v).slice(0, 10) : '';
 }

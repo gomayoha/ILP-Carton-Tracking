@@ -79,7 +79,7 @@ export function labelHTML(carton, rec, preset, opts = {}) {
       row('GROSS.W (KL TỔNG):', kg(carton.gw)),
       row('NET.W (KL TỊNH):', kg(carton.nw)),
       inbound
-        ? `<div class="lb-row two"><span class="lb-k">DIM (cm):</span><span class="lb-v d">${esc(dimText(carton.l, carton.w, carton.h, 1, ' × '))}</span><span class="lb-k w">PALLET:</span><span class="lb-v">${esc(carton.pallet)}</span></div>`
+        ? `<div class="lb-row two"><span class="lb-k">DIM (cm):</span><span class="lb-v d">${esc(dimText(carton.l, carton.w, carton.h, 1, ' × '))}</span><span class="lb-k w">${carton.pallet || !carton.location ? 'PALLET:' : 'LOC:'}</span><span class="lb-v">${esc(carton.pallet || carton.location)}</span></div>`
         : row('DIMENSION (KTT):', dimText(carton.l, carton.w, carton.h, 10, ' × ')),
       // TOTAL / ODD QUANTITY are on the slip, not the sticker (Ms Ly, Nov 2026): each sticker shows only its own carton.
     ].join('');

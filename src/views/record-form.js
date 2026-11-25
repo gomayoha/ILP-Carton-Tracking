@@ -70,7 +70,8 @@ function LineCard({ line, idx, type, onChange, onRemove, onDuplicate, showMore }
       </${Field}>
       <${Field} label=${tr('FSC', 'FSC')}><${Select} value=${line.fsc || ''} onChange=${(v) => set({ fsc: v })} options=${[{ value: '', label: tr('— not marked —', '— chưa đánh dấu —') }, ...FSC.map((f) => ({ value: f.code, label: f.label }))]} /></${Field}>
       ${isIn && html`<${Field} label=${tr('Pallet no.', 'Số pallet')} hint=${tr('e.g. 13 or 1-12', 'vd. 13 hoặc 1-12')}><${Input} value=${line.pallet || ''} onInput=${(v) => set({ pallet: v })} /></${Field}>
-        <${Field} label=${tr('Cartons per pallet', 'Số thùng / pallet')}><${NumInput} value=${line.perPallet || ''} onInput=${(v) => set({ perPallet: v })} /></${Field}>`}
+        <${Field} label=${tr('Cartons per pallet', 'Số thùng / pallet')}><${NumInput} value=${line.perPallet || ''} onInput=${(v) => set({ perPallet: v })} /></${Field}>
+        <${Field} label=${tr('Location', 'Vị trí')} hint=${tr('e.g. A01', 'vd. A01')}><${Input} value=${line.location || ''} onInput=${(v) => set({ location: v.toUpperCase() })} /></${Field}>`}
       <${Field} label=${tr('Pcs per bundle', 'SL / bó')} hint=${tr('Optional: prints 4×25=100', 'Tùy chọn: in dạng 4×25=100')}><${NumInput} value=${line.bundle} onInput=${(v) => set({ bundle: v })} /></${Field}>
     </div>
     ${(isShip || isIn) && sp.partial > 0 && html`<div class="partial-box">
@@ -175,6 +176,7 @@ function ImportPackingList({ rec, setRec }) {
       const res = await parsePackingListFile(file, { firstLn: rec.nextLn });
       if (res.lines.length) {
         setRec((r) => ({ ...r, lines: [...keep, ...res.lines], nextLn: r.nextLn + res.lines.length,
+          supplier: r.supplier || res.supplier || '', date: res.date || r.date,
           extRef: r.extRef || ([...new Set(res.lines.map((l) => l.po).filter(Boolean))].length === 1 ? res.lines[0].po : r.extRef) }));
       }
       const cartons = res.lines.reduce((a, l) => a + split(l.qty, l.ppc).count, 0);

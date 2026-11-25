@@ -55,6 +55,8 @@ export function CartonResult({ cid, compact }) {
       ${rec.type === 'shipment' && html`<div><dt>${tr('Customer', 'Khách hàng')}</dt><dd>${rec.customer}</dd></div>`}
       ${rec.type === 'inbound' && html`<div><dt>${tr('Supplier', 'Nhà cung cấp')}</dt><dd>${rec.supplier}</dd></div>`}
       ${c.pallet && html`<div><dt>Pallet</dt><dd>${c.pallet}</dd></div>`}
+      ${c.location && html`<div><dt>${tr('Location', 'Vị trí')}</dt><dd>${c.location}</dd></div>`}
+      ${c.entity && html`<div><dt>${tr('Entity', 'Công ty')}</dt><dd>${c.entity}</dd></div>`}
       ${(rec.type === 'shipment' || rec.type === 'inbound') && (c.nw || c.gw) && html`<div><dt>N.W / G.W</dt><dd>${fmtDec(c.nw, 2)} / ${fmtDec(c.gw, 2)} kg</dd></div>`}
       <div><dt>${tr('Carton ID', 'Mã thùng')}</dt><dd class="mono">${c.id}</dd></div>
     </dl>
