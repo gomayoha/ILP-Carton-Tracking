@@ -56,5 +56,27 @@ Read this before changing anything.
 ## Boss's scope (MD email, 23 Nov 2026)
 All warehouses of the group: China, Vietnam, France, UAE. Every operator scans the carton QR for each transaction: inbound, storage, pick up, outbound. Ms Ly (warehouse manager) defines the process; Yohan builds the tool. Review on Tue 1 Dec 2026. Built: inbound (production handoff + supplier receipt), transfer, outbound (shipment). Not built yet: storage locations, pick up. Risks: Google/Firebase blocked in mainland China, Spark quota, Chinese/French UI.
 
+## Tracker (keep this up to date every session — Yohan relies on it)
+Done
+- [x] Supplier receipt: upload Excel (supplier packing list, Ms Ly's stock-in template, delivery packing list) → 1 sticker per carton → scan to confirm (25 Nov 2026)
+- [x] 100 × 55 mm sticker default; TOTAL / ODD on the slip only
+
+Waiting on Yohan
+- [ ] Push the local commits in GitHub Desktop (needed before any demo)
+- [ ] Teams demo with Ms Ly before the end of the week of 23 Nov 2026 (promised): Excel upload → stickers → scan receipt → shipment scan → packing list
+- [ ] Send the email asking Ms Ly to collect info from China / France / UAE (reply-all on the MD's thread, due Fri 27 Nov)
+- [ ] Switch on login mode before real POs go in
+
+Waiting on Ms Ly
+- [ ] Raw materials (VN): how they arrive (pallets / rolls / cartons) and which unit (kg, roll, sheet). Not built: stock-in works the same way, but issuing raw materials to Production is not built (asked 25 Nov 2026)
+- [ ] Info per warehouse (China, France, UAE): contact, inbound docs, locations, pick up, outbound, volume, equipment, stock report, language
+
+To build (in order)
+- [ ] Pick up: import the delivery packing list as a pick list, scan cartons against it (right item, right count) → becomes the shipment
+- [ ] Storage: scan a location (A01…) then cartons to put them away / move them; carton page shows where it is
+- [ ] Raw materials (after Ms Ly's answer)
+- [ ] Review pack for Tue 1 Dec 2026: what is built, gaps, risks (China network, quota, IT approval, languages), go-live date per country
+- [ ] Later: Chinese / French screens, pallet QR (scan one pallet = all its cartons), stock balance per location
+
 ## Later (designed for, not built)
 In/Out/Rejected stock balances, warehouse locations (vị trí), QC hold/release (GR numbers), confirmation stages, per-person accounts, archiving records older than N months from the in-memory list.
