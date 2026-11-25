@@ -54,7 +54,7 @@ Read this before changing anything.
 6. Was the v1 Google Sheet backend ever used? (Only matters if old data needs importing.)
 
 ## Boss's scope (MD email, 23 Nov 2026)
-All warehouses of the group: China, Vietnam, France, UAE. Every operator scans the carton QR for each transaction: inbound, storage, pick up, outbound. Ms Ly (warehouse manager) defines the process; Yohan builds the tool. Review on Tue 1 Dec 2026. Built: inbound (production handoff + supplier receipt), transfer, outbound (shipment). Not built yet: storage locations, pick up. Risks: Google/Firebase blocked in mainland China, Spark quota, Chinese/French UI.
+All warehouses of the group: China, Vietnam, France, UAE. Every operator scans the carton QR for each transaction: inbound, storage, pick up, outbound. Ms Ly (warehouse manager) defines the process; Yohan builds the tool. Review on Tue 1 Dec 2026. Built: inbound (production handoff + supplier receipt), transfer, outbound (shipment). Not built yet: storage locations, pick up. Ms Ly (25 Nov 2026): go live in **France, Vietnam and China**; UAE uses the same system later — today an outside logistics company runs the UAE warehouse. Risks: Google/Firebase blocked in mainland China, Spark quota, Chinese/French UI.
 
 ## Tracker (keep this up to date every session — Yohan relies on it)
 Done
@@ -73,7 +73,7 @@ Waiting on Ms Ly
 
 To build (in order)
 - [ ] Pick up: import the delivery packing list as a pick list, scan cartons against it (right item, right count) → becomes the shipment
-- [ ] Storage: scan a location (A01…) then cartons to put them away / move them; carton page shows where it is
+- [ ] Storage: scan a location then cartons to put them away / move them; carton page shows where it is. Report must match the France stock report ("depot meaux.xlsx", 25 Nov 2026): one sheet per rack (Rack A–F), columns Location · Référence · Nombre cartons · Quantity par carton · Mouvement · Commentaires; locations written "A. 1. 2" = rack . level (1–9) . position (1–6); ~324 locations, keyed by **customer reference**, not ILP code; French headers. Ms Ly asked whether the system exports reports to Excel.
 - [ ] Raw materials (after Ms Ly's answer)
 - [ ] Review pack for Tue 1 Dec 2026: what is built, gaps, risks (China network, quota, IT approval, languages), go-live date per country
 - [ ] Later: Chinese / French screens, pallet QR (scan one pallet = all its cartons), stock balance per location
