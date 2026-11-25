@@ -607,3 +607,8 @@ tr.same-loc td { border-top-color: transparent; }
 .loclabel .loc-text b { font-size: calc(var(--lh) * .25); line-height: 1; font-weight: 800; white-space: nowrap; letter-spacing: .02em; }
 .loclabel .loc-qr { flex: none; height: calc(var(--lh) - 14mm); width: calc(var(--lh) - 14mm); }
 .loclabel .loc-qr svg { width: 100%; height: 100%; display: block; }
+.std-export { display: flex; gap: 18px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-bottom: 14px; }
+.std-export > div:first-child { flex: 1 1 320px; }
+.std-buttons { display: flex; gap: 10px; flex-wrap: wrap; }
+.check { display: inline-flex; gap: 6px; align-items: center; margin-top: 6px; }
+.tpl-link { margin-left: 14px; }

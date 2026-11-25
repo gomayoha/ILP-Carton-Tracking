@@ -9,7 +9,7 @@ import { num, round, fmtNum, fmtDec, newId, today, clean, go, normLoc } from '..
 import { parseScan } from '../qr.js';
 import { Scanner, feedback } from './scanner.js';
 import { printLabels } from '../print.js';
-import { parsePackingListFile } from '../excel.js';
+import { parsePackingListFile, downloadStockInTemplate } from '../excel.js';
 
 const draftKey = (type) => `ilp.draft.new.${type}`;
 const unitOpts = () => UNITS.map((u) => ({ value: u.code, label: tr(u.en, u.vi) }));
@@ -202,6 +202,7 @@ function ImportPackingList({ rec, setRec }) {
     <p class="muted small">${tr('Upload the supplier\'s packing list in Excel. Each row becomes a line; the cartons and their QR labels are created from it. Check the lines below before saving.', 'Tải lên packing list Excel của nhà cung cấp. Mỗi dòng thành một mã hàng; các thùng và nhãn QR được tạo từ đó. Kiểm tra các dòng bên dưới trước khi lưu.')}</p>
     <label class=${'btn primary' + (busy ? ' disabled' : '')}><${Icon} name="upload" /><span>${busy ? tr('Reading…', 'Đang đọc…') : tr('Upload packing list (.xlsx)', 'Tải packing list (.xlsx)')}</span>
       <input type="file" accept=".xlsx,.xls,.csv,.pdf" hidden onChange=${onFile} disabled=${busy} /></label>
+    <button class="link small tpl-link" onClick=${downloadStockInTemplate}>${tr('Download the blank stock-in template (same file for every warehouse)', 'Tải mẫu nhập kho trống (cùng một file cho mọi kho)')}</button>
     ${result && html`<div class=${'banner ' + (result.bad ? 'bad' : result.warnings.length ? 'warn' : 'info')}><${Icon} name=${result.bad ? 'alert' : 'check'} /><div>
       ${!result.bad && html`<b>${result.file}</b>: ${tr(`${result.lines} lines · ${fmtNum(result.qty)} pcs · ${result.cartons} cartons (labels) added.`, `đã thêm ${result.lines} dòng · ${fmtNum(result.qty)} sp · ${result.cartons} thùng (nhãn).`)}`}
       ${result.warnings.length > 0 && html`<ul>${result.warnings.map((w) => html`<li>${w}</li>`)}</ul>`}</div></div>`}

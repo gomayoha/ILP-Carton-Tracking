@@ -14,7 +14,7 @@ export const LABEL_PRESETS = {
   'thermal-100x100': { w: 100, h: 100, en: 'Thermal roll · 100 × 100 mm', vi: 'Cuộn nhiệt · 100 × 100 mm' },
   'thermal-100x150': { w: 100, h: 150, en: 'Thermal roll · 100 × 150 mm (4×6")', vi: 'Cuộn nhiệt · 100 × 150 mm (4×6")' },
   'thermal-75x50': { w: 75, h: 50, en: 'Thermal roll · 75 × 50 mm', vi: 'Cuộn nhiệt · 75 × 50 mm' },
-  'a4-8': { w: 105, h: 74.25, cols: 2, rows: 4, en: 'A4 sticker sheet · 8 per page (105 × 74 mm)', vi: 'Giấy decal A4 · 8 nhãn/trang (105 × 74 mm)' },
+  'a4-8': { w: 105, h: 74.25, s: 0.88, cols: 2, rows: 4, en: 'A4 sticker sheet · 8 per page (105 × 74 mm · France)', vi: 'Giấy decal A4 · 8 nhãn/trang (105 × 74 mm · Pháp)' },
   'a4-10': { w: 105, h: 57, cols: 2, rows: 5, top: 6, en: 'A4 sticker sheet · 10 per page (105 × 57 mm)', vi: 'Giấy decal A4 · 10 nhãn/trang (105 × 57 mm)' },
   'a4-4': { w: 105, h: 148.5, cols: 2, rows: 2, en: 'A4 sticker sheet · 4 per page (105 × 148 mm)', vi: 'Giấy decal A4 · 4 nhãn/trang (105 × 148 mm)' },
 };

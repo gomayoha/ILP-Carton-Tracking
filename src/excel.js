@@ -1,7 +1,7 @@
 // Excel in and out. SheetJS (≈1 MB) is only loaded when one of these functions is used.
 
 import { loadScript, norm, clean, num, today, fmtDate, toCSV, downloadFile } from './util.js';
-import { packingRows, totals, movementBlocks, LAYOUTS, recordCartons, split, fmtWO, warehouse, scanGroups, packingListLines, rackOf, locLabel } from './model.js';
+import { packingRows, totals, movementBlocks, LAYOUTS, recordCartons, split, fmtWO, warehouse, scanGroups, packingListLines, rackOf, locLabel, STOCK_IN_HEADER, STOCK_DATA_HEADER } from './model.js';
 import { itemToRow, rowToItem } from './store.js';
 
 async function XLSX() {
@@ -211,7 +211,28 @@ export async function downloadStockByLocation(rows, whName) {
     X.utils.book_append_sheet(wb, ws, safeName(k));
   }
   if (!keys.length) X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet([head]), 'Stock');
-  X.writeFile(wb, `Stock by location ${whName || ''} ${today()}.xlsx`.replace(/\s+/g, ' '));
+  X.writeFile(wb, `Stock by location ${whName || ''} ${today()}.xlsx`.replace(/[\\/:*?"<>|]/g, '-').replace(/\s+/g, ' '));
+}
+
+// The one standard format for every warehouse (Ms Ly's file): export "Stock data", blank "QR in" template.
+export async function downloadStockData(rows, label) {
+  const X = await XLSX();
+  const aoa = [['Stock data'], [], STOCK_DATA_HEADER, ...rows];
+  const ws = sheetFrom(X, aoa, [24, 18, 17, 26, 16, 8, 9, 9, 9, 9, 9, 9, 9, 9, 12, 16, 14, 18, 12, 14, 18], [14, 18]);
+  ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: STOCK_DATA_HEADER.length - 1 } }];
+  const wb = X.utils.book_new();
+  X.utils.book_append_sheet(wb, ws, 'Stock data');
+  X.writeFile(wb, `Stock data ${label || ''} ${today()}.xlsx`.replace(/[\\/:*?"<>|]/g, '-').replace(/\s+/g, ' '));
+}
+
+export async function downloadStockInTemplate() {
+  const X = await XLSX();
+  const ws = X.utils.aoa_to_sheet([['Stock -in'], [], STOCK_IN_HEADER]);
+  ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: STOCK_IN_HEADER.length - 1 } }];
+  ws['!cols'] = [24, 18, 17, 26, 8, 9, 9, 9, 9, 9, 9, 9, 9, 12, 16, 14, 18, 12, 8].map((w) => ({ wch: w }));
+  const wb = X.utils.book_new();
+  X.utils.book_append_sheet(wb, ws, 'QR in');
+  X.writeFile(wb, 'Stock-in template (QR in).xlsx');
 }
 
 export async function downloadPackingList(rec) {

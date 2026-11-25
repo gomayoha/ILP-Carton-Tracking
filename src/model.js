@@ -119,6 +119,7 @@ export function recordCartons(rec) {
         lineQty: num(line.qty), lineNotation: handNotation(line.qty, line.ppc),
         shipDate: rec.shipDate || rec.date,
         pallet: cartonPallet(line, i), location: line.location || '', entity: line.entity || '',
+        supplierCode: line.supplierCode || '', supplierName: line.supplierName || '', stockInDate: line.stockInDate || '',
       });
     }
   }
@@ -482,6 +483,7 @@ export function packingListLines(rows, { firstLn = 1 } = {}) {
       ln: ln++, code, ref: txt(get('ref')), desc: txt(get('desc')), unit: unitCode(get('unit')), qty, ppc: ppc || '', reqQty: '', wo: '', po: txt(get('po')),
       nw: n('nw'), gw: n('gw'), pnw: '', pgw: '', l: n('l'), w: n('w'), h: n('h'), printDate: '', packDate: '', fsc: '', bundle: '',
       pallet: txt(get('pallet')), perPallet: n('perPallet'), location: txt(get('location')).toUpperCase(), entity: txt(get('entity')),
+      supplierCode: txt(get('supplierCode')), supplierName: txt(get('supplierName')), stockInDate: excelDate(get('date')),
     });
   }
   if (noQty) warnings.push(tr(`${noQty} rows have no quantity received — each was counted as 1 full carton. Please check.`, `${noQty} dòng chưa có số lượng nhận — mỗi dòng được tính là 1 thùng đủ. Vui lòng kiểm tra.`));
@@ -551,3 +553,51 @@ export function stockByLocation(stock, wh) {
 export const rackOf = (loc) => (normLoc(loc).match(/^([A-Z]+)/) || [, normLoc(loc).split(/[.\-/]/)[0] || ''])[1];
 // "A.1.2" → "A. 1. 2" as written in the France report.
 export const locLabel = (loc) => (/^[A-Z]+(\.\d+)+$/.test(normLoc(loc)) ? normLoc(loc).split('.').join('. ') : normLoc(loc));
+
+// ── Standard stock data (one format for every warehouse) ────────────────────
+// Ms Ly's file "QR project detail data.xlsx": the same columns for input (sheet "QR in") and
+// export (sheet "Stock data"), one row per carton; "Barcode number" = the carton ID in the QR.
+// Her header spelling is kept exactly so files line up.
+
+export const STOCK_IN_HEADER = ['Entities', 'Customer Item No', 'Idea Item No', 'Product Name', 'Unit Code', 'Location', 'Pcs/carton', 'Lenght (cm)', 'Width (cm)', 'Height (cm)', 'net weight', 'gross weight', 'CBM', 'stock in date', 'PO number/ WO number', 'Suplier code', 'Suplier name', 'Quantity receive', 'sticker'];
+export const STOCK_DATA_HEADER = ['Entities', 'Customer Item No', 'Idea Item No', 'Product Name', 'Barcode number', 'Unit Code', 'Location', 'Pcs/carton', 'Lenght (cm)', 'Width (cm)', 'Height (cm)', 'net weight', 'gross weight', 'CBM', 'stock in date', 'PO number/ WO number', 'Suplier code', 'Suplier name', 'shipped date', 'invoice No', 'Customer'];
+
+const UNIT_OUT = { piece: 'pcs' };
+
+// Every labelled carton with where it is now, or when / how it was shipped.
+export function cartonLedger(records, { whName = (c) => c } = {}) {
+  const live = [...records].filter((r) => r.status !== 'void' && !r.deleted).sort(recOrder);
+  const all = new Map();
+  for (const r of live) {
+    if (r.type === 'shipment' || r.type === 'putaway') continue;
+    for (const c of recordCartons(r)) {
+      all.set(c.id, {
+        cid: c.id, code: c.code, ref: c.ref || '', desc: c.desc || '', unit: c.unit, qty: c.qty,
+        entity: c.entity || whName(r.toWh), wh: r.toWh, loc: normLoc(c.location),
+        l: c.l, w: c.w, h: c.h, nw: c.nw, gw: c.gw,
+        inDate: c.stockInDate || r.date, po: c.po || fmtWO(c.wo) || (r.type === 'inbound' ? r.extRef || '' : ''),
+        supCode: c.supplierCode || (r.type === 'handoff' ? 'production' : ''), supName: c.supplierName || (r.type === 'inbound' ? r.supplier || '' : r.type === 'handoff' ? 'production' : whName(r.fromWh)),
+        shipped: null,
+      });
+    }
+  }
+  for (const r of live) {
+    for (const s of r.scans || []) {
+      const c = all.get(s.cid);
+      if (!c || c.shipped) continue;
+      if (r.type === 'shipment') c.shipped = { date: r.shipDate || r.date, invoice: r.docNo, customer: r.customer || '', po: (r.scanPo || {})[c.code] || '' };
+      else if (r.type === 'putaway') Object.assign(c, { wh: r.toWh, loc: normLoc(r.loc) });
+      else if (r.type === 'transfer') Object.assign(c, { wh: r.toWh, loc: '' });
+    }
+  }
+  return [...all.values()];
+}
+
+export function stockDataRows(ledger, { wh, inStockOnly = false } = {}) {
+  return ledger
+    .filter((c) => (!wh || c.wh === wh) && (!inStockOnly || !c.shipped))
+    .sort((a, b) => locCompare(a.loc, b.loc) || a.code.localeCompare(b.code) || a.cid.localeCompare(b.cid, 'en', { numeric: true }))
+    .map((c) => [c.entity, c.ref, c.code, c.desc, c.cid, UNIT_OUT[c.unit] || c.unit || 'pcs', locLabel(c.loc), c.qty,
+      c.l || '', c.w || '', c.h || '', c.nw || '', c.gw || '', c.l && c.w && c.h ? round((num(c.l) * num(c.w) * num(c.h)) / 1e6, 6) : '',
+      c.inDate || '', c.po || '', c.supCode, c.supName, c.shipped ? c.shipped.date : '', c.shipped ? c.shipped.invoice : '', c.shipped ? c.shipped.customer : '']);
+}

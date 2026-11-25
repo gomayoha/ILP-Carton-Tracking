@@ -5,9 +5,9 @@ import { html, useState } from '../../vendor/preact-htm.js';
 import { tr } from '../i18n.js';
 import { useStore } from '../store.js';
 import { Icon, Btn, Field, Input, WhSelect, PageHead, Empty } from '../components.js';
-import { currentStock, stockByLocation, locLabel, unitLabel } from '../model.js';
+import { currentStock, stockByLocation, locLabel, unitLabel, cartonLedger, stockDataRows } from '../model.js';
 import { fmtNum, norm, normLoc } from '../util.js';
-import { downloadStockByLocation } from '../excel.js';
+import { downloadStockByLocation, downloadStockData, downloadStockInTemplate } from '../excel.js';
 import { printLocationLabels } from '../print.js';
 
 export function StockPage() {
@@ -16,6 +16,7 @@ export function StockPage() {
   const [wh, setWh] = useState(() => { try { return localStorage.getItem('ilp.stock.wh') || s.settings.defaults?.shipment?.fromWh || whs[0]?.code || ''; } catch { return whs[0]?.code || ''; } });
   const [q, setQ] = useState('');
   const [locs, setLocs] = useState('');
+  const [withShipped, setWithShipped] = useState(true);
   const pickWh = (v) => { setWh(v); try { localStorage.setItem('ilp.stock.wh', v); } catch {} };
 
   const stock = currentStock([...s.records.values()]);
@@ -50,6 +51,16 @@ export function StockPage() {
         <${Field} label=${tr('Warehouse', 'Kho')}><${WhSelect} value=${wh} onChange=${pickWh} warehouses=${whs} /></${Field}>
         <${Field} label=${tr('Search', 'Tìm')} cls="span2"><${Input} value=${q} onInput=${setQ} placeholder=${tr('Location, code, customer ref…', 'Vị trí, mã hàng, mã KH…')} /></${Field}>
         <div class="stock-dl"><${Btn} icon="download" onClick=${() => downloadStockByLocation(rows, whName)} disabled=${!rows.length} title=${tr('One sheet per rack, like the France stock report', 'Mỗi kệ một sheet, giống báo cáo tồn kho Pháp')}>${tr('Export Excel', 'Xuất Excel')}</${Btn}></div>
+      </div>
+    </div>
+
+    <div class="card soft std-export">
+      <div><b>${tr('Standard stock data (same file for every warehouse)', 'Dữ liệu tồn kho chuẩn (cùng một file cho mọi kho)')}</b>
+        <p class="muted small">${tr('One row per carton, the columns of the "Stock data" sheet: entity, item, barcode (carton ID), location, carton size and weights, stock-in date, PO / WO, supplier, and shipped date / invoice / customer once shipped.', 'Mỗi thùng một dòng, các cột của sheet "Stock data": công ty, mã hàng, mã vạch (mã thùng), vị trí, kích thước và trọng lượng thùng, ngày nhập, PO / WO, nhà cung cấp, và ngày xuất / invoice / khách hàng khi đã xuất.')}</p>
+        <label class="check small"><input type="checkbox" checked=${withShipped} onChange=${(e) => setWithShipped(e.target.checked)} /> ${tr('Include cartons already shipped', 'Gồm cả thùng đã xuất')}</label></div>
+      <div class="std-buttons">
+        <${Btn} kind="primary" icon="download" onClick=${() => downloadStockData(stockDataRows(cartonLedger([...s.records.values()], { whName: (c) => (whs.find((x) => x.code === c) || {}).name || c }), { wh, inStockOnly: !withShipped }), whName)}>${tr('Stock data .xlsx', 'Stock data .xlsx')}</${Btn}>
+        <${Btn} icon="file" onClick=${downloadStockInTemplate}>${tr('Blank stock-in template', 'Mẫu nhập kho trống')}</${Btn}>
       </div>
     </div>
 

@@ -15,7 +15,7 @@
 <p>Open this page from the local server (e.g. http://127.0.0.1:8765/tests/run.html). Every line should be green.</p>
 <div id="out"></div>
 <script type="module">
-  import { split, notation, packingRows, totals, movementBlocks, recordCartons, fmtWO, validate, handNotation, perCartonNotation, receiptState, hasReceipt, scanGroups, packingListLines, cartonPallet, excelDate, pickFromLines, pickProgress, currentStock, stockByLocation, rackOf, locLabel } from '../src/model.js';
+  import { split, notation, packingRows, totals, movementBlocks, recordCartons, fmtWO, validate, handNotation, perCartonNotation, receiptState, hasReceipt, scanGroups, packingListLines, cartonPallet, excelDate, pickFromLines, pickProgress, currentStock, stockByLocation, rackOf, locLabel, cartonLedger, stockDataRows, STOCK_DATA_HEADER } from '../src/model.js';
   import { incrementDocNo, norm } from '../src/util.js';
   import { parseScan, cartonPayload, locationPayload } from '../src/qr.js';
   import { DEFAULT_SETTINGS } from '../src/store.js';
@@ -177,6 +177,17 @@
   eq('shelf label QR parses', parseScan(locationPayload('A.1.2')), { location: 'A.1.2' });
   eq('put away needs a location and cartons', validate({ ...put, loc: '', scans: [] }).length, 2);
   eq('valid put away passes', validate(put), []);
+
+  // One standard export for every warehouse (Ms Ly's "Stock data" sheet), one row per carton
+  const recvX = { ...recv, lines: [{ ...recv.lines[0], entity: 'Entity A', supplierCode: 'SUP01', supplierName: 'Supplier One', po: 'PO-9', l: 40, w: 25, h: 14, nw: 4.5, gw: 5 }, recv.lines[1]] };
+  const led = cartonLedger([put, recvX, { ...shipOut, customer: 'Customer X', docNo: 'INV-1' }]);
+  const sd = stockDataRows(led, { wh: 'FR' });
+  eq('stock data has her 21 columns', STOCK_DATA_HEADER.length, 21);
+  eq('stock data: one row per carton (incl. shipped)', sd.length, 7);
+  const shippedRow = sd.find((r) => r[4] === ids10[0]);
+  eq('stock data row for a shipped carton', [shippedRow[0], shippedRow[2], shippedRow[6], shippedRow[7], shippedRow[13], shippedRow[15], shippedRow[16], shippedRow[17], shippedRow[19], shippedRow[20]],
+    ['Entity A', 'ILPTST00000010', 'A. 1. 2', 250, 0.014, 'PO-9', 'SUP01', 'Supplier One', 'INV-1', 'Customer X']);
+  eq('stock data in stock only', stockDataRows(led, { wh: 'FR', inStockOnly: true }).length, 6);
 
   out.insertAdjacentHTML('afterbegin', `<h2 class="${failed ? 'fail' : 'pass'}">${failed ? `${failed} failed, ${passed} passed` : `All ${passed} tests passed`}</h2>`);
   document.title = failed ? `✗ ${failed} failed` : `✓ ${passed} passed`;
