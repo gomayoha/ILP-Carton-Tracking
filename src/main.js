@@ -99,6 +99,7 @@ function App() {
           <button class="btn primary small" onClick=${() => setNewOpen(!newOpen)} aria-expanded=${newOpen}><${Icon} name="plus" /><span>${tr('New', 'Tạo mới')}</span></button>
           ${newOpen && html`<div class="menu" onClick=${() => setNewOpen(false)}>
             <a href="#/new/handoff"><${Icon} name="inbox" />${tr('Production handoff', 'Giao nhận thành phẩm')}</a>
+            <a href="#/new/inbound"><${Icon} name="upload" />${tr('Supplier receipt', 'Nhập hàng NCC')}</a>
             <a href="#/new/transfer"><${Icon} name="swap" />${tr('Warehouse transfer', 'Chuyển kho')}</a>
             <a href="#/new/shipment"><${Icon} name="truck" />${tr('Shipment / packing list', 'Xuất hàng / packing list')}</a>
           </div>`}

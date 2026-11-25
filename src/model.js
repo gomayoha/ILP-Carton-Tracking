@@ -1,19 +1,21 @@
 // Business rules: carton split, numbering, totals, packing-list rows and Excel export rows.
 // Kept free of UI code so it can be tested on its own (see tests/model.test.html).
 
-import { num, round, fmtNum, clean } from './util.js';
+import { num, round, fmtNum, clean, norm } from './util.js';
 import { tr } from './i18n.js';
 
-export const TYPES = ['handoff', 'transfer', 'shipment'];
+export const TYPES = ['handoff', 'inbound', 'transfer', 'shipment'];
 
 export const typeName = (t) => ({
   handoff: tr('Production handoff', 'Giao nhận thành phẩm'),
+  inbound: tr('Supplier receipt', 'Nhập hàng từ nhà cung cấp'),
   transfer: tr('Warehouse transfer', 'Chuyển kho'),
   shipment: tr('Shipment', 'Xuất hàng'),
 }[t] || t);
 
 export const typeShort = (t) => ({
   handoff: tr('Handoff', 'Giao nhận'),
+  inbound: tr('Supplier receipt', 'Nhập NCC'),
   transfer: tr('Transfer', 'Chuyển kho'),
   shipment: tr('Shipment', 'Xuất hàng'),
 }[t] || t);
@@ -114,19 +116,33 @@ export function recordCartons(rec) {
         fsc: line.fsc || '', perCarton: perCartonNotation(line.ppc, line.bundle),
         lineQty: num(line.qty), lineNotation: handNotation(line.qty, line.ppc),
         shipDate: rec.shipDate || rec.date,
+        pallet: cartonPallet(line, i),
       });
     }
   }
-  // Shipments number cartons across the whole packing list (1…N, repacked cartons first,
-  // then the scanned production cartons); others per line.
+  // Shipments and supplier receipts number cartons across the whole packing list (1…N; for shipments
+  // repacked cartons first, then the scanned production cartons); production slips per line.
+  const across = rec.type === 'shipment' || rec.type === 'inbound';
   const scannedCount = rec.type === 'shipment' ? (rec.scans || []).length : 0;
   out.forEach((c, i) => {
-    if (rec.type === 'shipment') { c.n = i + 1; c.of = out.length + scannedCount; }
+    if (across) { c.n = i + 1; c.of = out.length + scannedCount; }
     else { c.n = c.lineN; c.of = c.lineOf; }
     c.docNo = rec.docNo; c.date = rec.date; c.type = rec.type;
-    c.extraRef = rec.type === 'shipment' ? c.po : fmtWO(c.wo);
+    c.extraRef = across ? c.po : fmtWO(c.wo);
   });
   return out;
+}
+
+// Pallet of carton `seq` on a line. Supplier packing lists give "Pallet No" as "13" or a range "1-12"
+// plus "boxes/Pallet" (e.g. 50): carton 51 is then on pallet 2.
+export function cartonPallet(line, seq) {
+  const p = clean(line.pallet);
+  if (!p) return '';
+  const m = p.match(/^(\d+)\s*[-–]\s*(\d+)$/);
+  if (!m) return p;
+  const from = +m[1], to = +m[2], per = num(line.perPallet);
+  if (!(per > 0)) return p;
+  return String(Math.min(to, from + Math.floor((seq - 1) / per)));
 }
 
 export function findCartonInRecord(rec, cid) {
@@ -222,7 +238,7 @@ export function packingRows(rec) {
 
 // ── Receipt confirmation (warehouse counts what production handed over) ─────
 
-export const hasReceipt = (rec) => rec.type === 'handoff' || rec.type === 'transfer';
+export const hasReceipt = (rec) => rec.type === 'handoff' || rec.type === 'transfer' || rec.type === 'inbound';
 
 export function expectedCartonIds(rec) {
   return [...recordCartons(rec).map((c) => c.id), ...(rec.scans || []).map((s) => s.cid)];
@@ -291,6 +307,9 @@ export function movementBlocks(rec, settings) {
   if (rec.type === 'handoff') {
     const rows = movedGroups(rec, { perLine: true }).map((g) => row(to.layout, 'in', g, 'Nhận thành phẩm', fmtWO(g.wo), '', rec.noteNo));
     blocks.push({ wh: to, direction: 'in', layout: to.layout, header: LAYOUTS[to.layout], rows });
+  } else if (rec.type === 'inbound') {
+    const rows = movedGroups(rec, { perLine: true }).map((g) => row(to.layout, 'in', g, rec.supplier || 'supplier', g.po || rec.extRef || '', rec.docNo, rec.noteNo));
+    blocks.push({ wh: to, direction: 'in', layout: to.layout, header: LAYOUTS[to.layout], rows });
   } else if (rec.type === 'transfer') {
     const groups = movedGroups(rec);
     blocks.push({ wh: from, direction: 'out', layout: from.layout, header: LAYOUTS[from.layout],
@@ -314,7 +333,8 @@ export function validate(rec, { docNoTaken } = {}) {
   if (clean(rec.docNo) && docNoTaken) req(!docNoTaken, `Number ${rec.docNo} is already used by another ${typeShort(rec.type).toLowerCase()}.`, `Số ${rec.docNo} đã được dùng cho phiếu khác.`);
   req(rec.date, 'Date is required.', 'Cần nhập ngày.');
   if (rec.type === 'shipment') req(clean(rec.customer), 'Customer is required.', 'Cần nhập khách hàng.');
-  if (rec.type !== 'shipment') req(rec.fromWh !== rec.toWh, 'From and To must be different.', 'Nơi giao và nơi nhận phải khác nhau.');
+  if (rec.type === 'inbound') { req(clean(rec.supplier), 'Supplier is required.', 'Cần nhập nhà cung cấp.'); req(rec.toWh, 'Receiving warehouse is required.', 'Cần chọn kho nhận.'); }
+  else if (rec.type !== 'shipment') req(rec.fromWh !== rec.toWh, 'From and To must be different.', 'Nơi giao và nơi nhận phải khác nhau.');
   const lines = rec.lines || [];
   req(lines.length || (rec.scans || []).length, 'Add at least one item.', 'Cần thêm ít nhất một mã hàng.');
   lines.forEach((l, i) => {
@@ -324,4 +344,84 @@ export function validate(rec, { docNoTaken } = {}) {
     if (num(l.ppc) < 0) errors.push(tr(`Line ${n}: pcs per carton cannot be negative.`, `Dòng ${n}: số lượng/thùng không được âm.`));
   });
   return errors;
+}
+
+// ── Supplier packing list → lines ───────────────────────────────────────────
+// Reads the rows of a packing list sheet (array of arrays, as SheetJS gives them). Works with the
+// supplier packing lists the group receives (e.g. "IDEA L PACK B.V" layout: Customer PO, Customer Style,
+// Internal Code, Description, Order Qty, Number of UOM, Qty/UOM, Net/Gross weight (1 carton),
+// L/W/H (1 carton), boxes/Pallet, Pallet No) and with our own packing list export.
+// Header cells may span two rows (merged cells); carton columns are told apart from pallet columns.
+
+const key = (s) => norm(s).replace(/[^a-z0-9]/g, '');
+const PL_COLS = [
+  ['code', (k) => ['internalcode', 'interalcode', 'ilpcode', 'sku', 'itemcode', 'mahang'].includes(k) || k.startsWith('internalcode')],
+  ['po', (k) => ['customerpo', 'po', 'pono', 'ponumber', 'purchaseorder'].includes(k) || k.startsWith('customerpo')],
+  ['ref', (k) => ['customerstyle', 'customercode', 'customerref', 'reference', 'referenceno', 'refno', 'makhachhang', 'makh'].some((x) => k.startsWith(x))],
+  ['desc', (k) => k.startsWith('description') || k.startsWith('tenhang')],
+  ['uoms', (k) => k.startsWith('numberofuom') || ['cartons', 'ctns', 'noofcartons', 'numberofcartons', 'sothung', 'cartonqty'].includes(k)],
+  ['ppc', (k) => k.startsWith('qtyuom') || ['pcscarton', 'pcsctn', 'qtycarton', 'qtyctn', 'pcsbox', 'qtybox'].includes(k)],
+  ['qty', (k) => k.startsWith('orderqty') || ['qty', 'quantity', 'quantitypc', 'quantitypcs', 'shippedqty', 'totalqty', 'qtypcs', 'soluong'].includes(k)],
+  ['nw', (k) => (k.startsWith('netweight') || k.startsWith('nw')) && !k.includes('pallet')],
+  ['gw', (k) => (k.startsWith('grossweight') || k.startsWith('gw')) && !k.includes('pallet')],
+  ['l', (k) => !k.includes('pallet') && (k === 'l' || k.startsWith('l1carton') || k === 'lcm' || k === 'length')],
+  ['w', (k) => !k.includes('pallet') && (k === 'w' || k.startsWith('w1carton') || k === 'wcm' || k === 'width')],
+  ['h', (k) => !k.includes('pallet') && (k === 'h' || k.startsWith('h1carton') || k === 'hcm' || k === 'height')],
+  ['perPallet', (k) => ['boxespallet', 'boxpallet', 'ctnspallet', 'cartonspallet', 'ctnpallet'].includes(k)],
+  ['pallet', (k) => ['palletno', 'palletnumber', 'palletnos'].includes(k)],
+];
+
+function plColumns(cells) {
+  const keys = cells.map(key);
+  const col = {};
+  const used = new Set();
+  for (const [f, test] of PL_COLS) {
+    const i = keys.findIndex((k, j) => k && !used.has(j) && test(k));
+    if (i >= 0) { col[f] = i; used.add(i); }
+  }
+  return col;
+}
+
+export function packingListLines(rows, { firstLn = 1 } = {}) {
+  const txt = (v) => clean(v);
+  let col = null, start = 0;
+  const ok = (c) => c.code !== undefined && (c.qty !== undefined || (c.uoms !== undefined && c.ppc !== undefined));
+  const top = Math.min(rows.length, 25);
+  // First a one-row header; only if there is none, a header split over two rows
+  // ("Internal" / "code"): each column's text joined with the row below.
+  for (let hi = 0; hi < top && !col; hi++) {
+    const one = plColumns(rows[hi] || []);
+    if (ok(one)) { col = one; start = hi + 1; }
+  }
+  for (let hi = 0; hi < top && !col; hi++) {
+    const next = rows[hi + 1] || [];
+    const width = Math.max((rows[hi] || []).length, next.length);
+    const two = plColumns(Array.from({ length: width }, (_, j) => `${txt((rows[hi] || [])[j])} ${txt(next[j])}`));
+    if (ok(two)) { col = two; start = hi + 2; }
+  }
+  if (!col) return { lines: [], warnings: [tr('No packing list header found (needs at least Internal code and Quantity columns).', 'Không tìm thấy dòng tiêu đề packing list (cần ít nhất cột Internal code và Số lượng).')] };
+  const lines = [];
+  const warnings = [];
+  let ln = firstLn;
+  for (let r = start; r < rows.length; r++) {
+    const row = rows[r] || [];
+    const get = (f) => (col[f] === undefined ? '' : row[col[f]]);
+    const code = txt(get('code')).toUpperCase();
+    if (!code || /\s/.test(code)) continue; // totals, notes, addresses
+    let qty = num(get('qty')), ppc = num(get('ppc'));
+    const uoms = num(get('uoms'));
+    if (!qty && uoms && ppc) qty = round(uoms * ppc, 3);
+    if (!ppc && uoms && qty && Number.isInteger(round(qty / uoms, 6))) ppc = round(qty / uoms, 6);
+    if (!(qty > 0)) continue;
+    const sp = split(qty, ppc);
+    if (uoms && sp.count && sp.count !== uoms) warnings.push(tr(`Row ${r + 1} (${code}): the list says ${uoms} cartons, but ${fmtNum(qty)} ÷ ${fmtNum(ppc)} gives ${sp.count}.`, `Dòng ${r + 1} (${code}): packing list ghi ${uoms} thùng, nhưng ${fmtNum(qty)} ÷ ${fmtNum(ppc)} = ${sp.count} thùng.`));
+    const n = (f) => (num(get(f)) > 0 ? num(get(f)) : '');
+    lines.push({
+      ln: ln++, code, ref: txt(get('ref')), desc: txt(get('desc')), unit: 'piece', qty, ppc: ppc || '', reqQty: '', wo: '', po: txt(get('po')),
+      nw: n('nw'), gw: n('gw'), pnw: '', pgw: '', l: n('l'), w: n('w'), h: n('h'), printDate: '', packDate: '', fsc: '', bundle: '',
+      pallet: txt(get('pallet')), perPallet: n('perPallet'),
+    });
+  }
+  if (!lines.length) warnings.push(tr('The header was found but no item rows with a quantity.', 'Đã thấy dòng tiêu đề nhưng không có dòng hàng nào có số lượng.'));
+  return { lines, warnings };
 }

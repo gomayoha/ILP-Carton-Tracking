@@ -70,6 +70,7 @@ export function RecordView({ id }) {
   const cartons = recordCartons(rec);
   const groups = scanGroups(rec);
   const isShip = rec.type === 'shipment';
+  const isIn = rec.type === 'inbound';
   const voided = rec.status === 'void';
   const wh = (code) => { const w = warehouse(s.settings, code); return tr(w.name, w.vi); };
   const rc = hasReceipt(rec) ? receiptState(rec) : null;
@@ -95,13 +96,14 @@ export function RecordView({ id }) {
   const shown = showAllCartons ? cartons : cartons.slice(0, 24);
   const head = {
     handoff: tr('Production handoff', 'Phiếu giao nhận thành phẩm'),
+    inbound: tr('Supplier receipt', 'Phiếu nhập hàng từ nhà cung cấp'),
     transfer: tr('Warehouse transfer', 'Phiếu chuyển kho'),
     shipment: tr('Shipment · packing list', 'Xuất hàng · packing list'),
   }[rec.type];
 
   return html`
     <${PageHead} back="#/records" eyebrow=${head} title=${html`<span class="mono-title">${rec.docNo}</span>`}
-      sub=${html`${fmtDate(rec.date)} · ${isShip ? html`${rec.customer}${rec.shipTo ? ' → ' + rec.shipTo : ''}` : html`${wh(rec.fromWh)} → ${wh(rec.toWh)}`}`}
+      sub=${html`${fmtDate(rec.date)} · ${isShip ? html`${rec.customer}${rec.shipTo ? ' → ' + rec.shipTo : ''}` : isIn ? html`${rec.supplier} → ${wh(rec.toWh)}` : html`${wh(rec.fromWh)} → ${wh(rec.toWh)}`}`}
       actions=${html`
         ${voided ? html`<${Chip} kind="bad" icon="ban">${tr('Voided', 'Đã hủy')}</${Chip}>` : html`<${Chip} kind="good" icon="check">${tr('Active', 'Hiệu lực')}</${Chip}>`}
         ${rc && !voided && (rc.status === 'received'
@@ -131,7 +133,7 @@ export function RecordView({ id }) {
     <div class="kpi-strip">
       <div><small>${tr('Total quantity', 'Tổng số lượng')}</small><b>${fmtNum(t.qty, t.qty % 1 ? 2 : 0)}</b><span>${t.unit ? unitLabel(t.unit) : ''}</span></div>
       <div><small>${tr('Cartons', 'Số thùng')}</small><b>${t.cartons}</b><span>${groups.length ? `${t.scanned} ${tr('scanned', 'đã quét')}` : `${cartons.length} ${tr('labels', 'nhãn')}`}</span></div>
-      ${isShip ? html`
+      ${isShip || isIn ? html`
         <div><small>${tr('Net weight', 'TL tịnh')}</small><b>${fmtNum(t.nw, 2)}</b><span>kg</span></div>
         <div><small>${tr('Gross weight', 'TL cả bì')}</small><b>${fmtNum(t.gw, 2)}</b><span>kg</span></div>
         <div><small>CBM</small><b>${fmtNum(t.cbm, 3)}</b><span>m³</span></div>` : html`
@@ -140,7 +142,7 @@ export function RecordView({ id }) {
           : html`<div><small>PO / PXK / PNK</small><b class="text">${rec.extRef || '—'}</b><span>${[rec.outNoteNo, rec.noteNo].filter(Boolean).join(' · ')}</span></div>`}`}
     </div>
 
-    ${isShip ? html`<div class="card"><div class="block-title"><h3>${tr('Packing list', 'Packing list')}</h3><span>${tr('Same layout as the paper packing list', 'Giống mẫu packing list giấy')}</span></div>
+    ${isShip || isIn ? html`<div class="card"><div class="block-title"><h3>${tr('Packing list', 'Packing list')}</h3><span>${isIn ? [rec.extRef, rec.noteNo].filter(Boolean).join(' · ') : tr('Same layout as the paper packing list', 'Giống mẫu packing list giấy')}</span></div>
       <div class="table-wrap"><table class="data">
         <thead><tr><th>Customer PO</th><th>Customer code</th><th>Internal code</th><th>Description</th><th class="c">Carton no</th><th class="r">Order QTY</th><th class="r">UOM</th><th class="r">Qty/UOM</th><th class="r">N.W</th><th class="r">G.W</th><th class="c">L×W×H</th><th class="r">Total N.W</th><th class="r">Total G.W</th><th class="r">CBM</th></tr></thead>
         <tbody>${packingRows(rec).map((r) => html`<tr><td>${r.po}</td><td>${r.ref}</td><td class="mono">${r.code}</td><td>${r.desc}</td><td class="c">${r.cartonNo}</td><td class="r">${fmtNum(r.qty)}</td><td class="r">${r.uoms}</td><td class="r">${r.perUom === '' ? '' : fmtNum(r.perUom)}</td><td class="r">${r.nw === '' ? '' : fmtNum(r.nw, 2)}</td><td class="r">${r.gw === '' ? '' : fmtNum(r.gw, 2)}</td><td class="c">${r.l ? `${fmtDec(r.l, 1)}×${fmtDec(r.w, 1)}×${fmtDec(r.h, 1)}` : ''}</td><td class="r">${r.tnw === '' ? '' : fmtNum(r.tnw, 2)}</td><td class="r">${r.tgw === '' ? '' : fmtNum(r.tgw, 2)}</td><td class="r">${r.cbm === '' ? '' : fmtNum(r.cbm, 3)}</td></tr>`)}</tbody>

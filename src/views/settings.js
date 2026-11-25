@@ -50,10 +50,10 @@ function SharedDefaults({ settings }) {
   const save = () => { saveSettings({ seeds, defaults: defs, shippingMark: mark, origin }); toast(tr('Saved for everyone.', 'Đã lưu cho mọi người.')); };
   return html`
     <div class="settings-grid">
-      ${['handoff', 'transfer', 'shipment'].map((t) => html`<div class="mini-card">
+      ${['handoff', 'inbound', 'transfer', 'shipment'].map((t) => html`<div class="mini-card">
         <h5>${typeName(t)}</h5>
-        <${Field} label=${tr('Last number used', 'Số cuối đã dùng')} hint=${tr('The app suggests the next one', 'Ứng dụng gợi ý số tiếp theo')}><${Input} value=${seeds[t]} onInput=${(v) => setSeeds({ ...seeds, [t]: v })} cls="mono" /></${Field}>
-        <${Field} label=${tr('Default from', 'Mặc định từ')}><${WhSelect} value=${defs[t]?.fromWh || ''} onChange=${(v) => setDef(t, 'fromWh', v)} warehouses=${wh} allowEmpty /></${Field}>
+        ${t !== 'inbound' && html`<${Field} label=${tr('Last number used', 'Số cuối đã dùng')} hint=${tr('The app suggests the next one', 'Ứng dụng gợi ý số tiếp theo')}><${Input} value=${seeds[t]} onInput=${(v) => setSeeds({ ...seeds, [t]: v })} cls="mono" /></${Field}>`}
+        ${t !== 'inbound' && html`<${Field} label=${tr('Default from', 'Mặc định từ')}><${WhSelect} value=${defs[t]?.fromWh || ''} onChange=${(v) => setDef(t, 'fromWh', v)} warehouses=${wh} allowEmpty /></${Field}>`}
         ${t !== 'shipment' && html`<${Field} label=${tr('Default to', 'Mặc định đến')}><${WhSelect} value=${defs[t]?.toWh || ''} onChange=${(v) => setDef(t, 'toWh', v)} warehouses=${wh} allowEmpty /></${Field}>`}
       </div>`)}
     </div>

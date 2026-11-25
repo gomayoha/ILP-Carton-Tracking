@@ -53,14 +53,16 @@ export function CartonResult({ cid, compact }) {
       ${c.wo && html`<div><dt>${tr('Work order', 'Lệnh SX')}</dt><dd>${fmtWO(c.wo)}</dd></div>`}
       ${c.po && html`<div><dt>Customer PO</dt><dd>${c.po}</dd></div>`}
       ${rec.type === 'shipment' && html`<div><dt>${tr('Customer', 'Khách hàng')}</dt><dd>${rec.customer}</dd></div>`}
-      ${rec.type === 'shipment' && (c.nw || c.gw) && html`<div><dt>N.W / G.W</dt><dd>${fmtDec(c.nw, 2)} / ${fmtDec(c.gw, 2)} kg</dd></div>`}
+      ${rec.type === 'inbound' && html`<div><dt>${tr('Supplier', 'Nhà cung cấp')}</dt><dd>${rec.supplier}</dd></div>`}
+      ${c.pallet && html`<div><dt>Pallet</dt><dd>${c.pallet}</dd></div>`}
+      ${(rec.type === 'shipment' || rec.type === 'inbound') && (c.nw || c.gw) && html`<div><dt>N.W / G.W</dt><dd>${fmtDec(c.nw, 2)} / ${fmtDec(c.gw, 2)} kg</dd></div>`}
       <div><dt>${tr('Carton ID', 'Mã thùng')}</dt><dd class="mono">${c.id}</dd></div>
     </dl>
     ${!compact && html`<div class="timeline">
       <h4>${tr('History', 'Lịch sử')}</h4>
       <ol>
         <li><span class="dot good"></span><div><b>${rec.type === 'shipment' ? tr('Packed for shipment', 'Đóng gói xuất hàng') : tr('Labelled', 'Dán nhãn')} — ${typeName(rec.type)}</b>
-          <small>${fmtDate(rec.date)} · ${rec.docNo}${rec.type !== 'shipment' ? ` · ${rec.fromWh} → ${rec.toWh}` : ` · ${rec.customer}`}</small></div></li>
+          <small>${fmtDate(rec.date)} · ${rec.docNo}${rec.type === 'inbound' ? ` · ${rec.supplier} → ${rec.toWh}` : rec.type !== 'shipment' ? ` · ${rec.fromWh} → ${rec.toWh}` : ` · ${rec.customer}`}</small></div></li>
         ${moves.map((m) => html`<li><span class=${'dot ' + (m.type === 'shipment' ? 'info' : 'good')}></span><div>
           <b>${m.type === 'shipment' ? tr('Shipped', 'Đã xuất hàng') : tr('Transferred', 'Đã chuyển kho')} — <a class="link" href=${'#/r/' + m.id}>${m.docNo}</a></b>
           <small>${fmtDate(m.date)} · ${m.type === 'shipment' ? m.customer : `${m.fromWh} → ${m.toWh}`}</small></div></li>`)}

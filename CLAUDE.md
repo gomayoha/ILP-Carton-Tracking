@@ -13,6 +13,7 @@ Read this before changing anything.
 1. Production → **Print WH**: paper slip "Phiếu Giao Nhận Thành Phẩm" (Số 0001955 on 7 Sep 2026). Logged in `STOCK REPORT Print` → sheet `PRINT` as `In · "Nhận thành phẩm" · remark WO…`. Notation `34T(100) + 1T(40)` = 34 cartons × 100 + 1 × 40.
 2. Print WH → **Pack/Trading WH**: `PRINT` out "transfer to pack" ↔ `STOCK REPORT Trading` → `In-out detail` in "transfer from print" (POVN-…, pnk…). Logged as full-carton qty row + partial row.
 3. Trading WH → customer: packing list / invoice (e.g. IDE0004000), pxk… delivery note. Pack re-packs into shipping cartons.
+4. Supplier → any group warehouse (**Supplier receipt**, type `inbound`, Nov 2026): Ms Ly sent a real supplier packing list (Turkey → France WH, billed to Pack BV, 781 cartons on 19 pallets). Same columns as our own packing list (Customer PO, Customer Style, Internal Code, Order Qty, Number of UOM, Qty/UOM, weights and L/W/H per carton, boxes/Pallet, Pallet No). The warehouse uploads it as Excel (`packingListLines` in `model.js`); one IDEA-L-INBOUND sticker per carton (PO + pallet on it), cartons numbered 1…N across the list, then scan to confirm receipt. PDFs can't be read — ask suppliers for Excel.
 "PUR WH" in the boss's first message is most likely a typo for "our WH" (not yet confirmed by Yohan).
 
 ## Confirmed by the warehouse manager (Ms Ly, 18 Oct 2026)
@@ -51,6 +52,9 @@ Read this before changing anything.
 4. Open access vs login (recommended: login, one account per warehouse).
 5. Company IT rules on external cloud services (Firebase = Google Cloud).
 6. Was the v1 Google Sheet backend ever used? (Only matters if old data needs importing.)
+
+## Boss's scope (MD email, 23 Nov 2026)
+All warehouses of the group: China, Vietnam, France, UAE. Every operator scans the carton QR for each transaction: inbound, storage, pick up, outbound. Ms Ly (warehouse manager) defines the process; Yohan builds the tool. Review on Tue 1 Dec 2026. Built: inbound (production handoff + supplier receipt), transfer, outbound (shipment). Not built yet: storage locations, pick up. Risks: Google/Firebase blocked in mainland China, Spark quota, Chinese/French UI.
 
 ## Later (designed for, not built)
 In/Out/Rejected stock balances, warehouse locations (vị trí), QC hold/release (GR numbers), confirmation stages, per-person accounts, archiving records older than N months from the in-memory list.

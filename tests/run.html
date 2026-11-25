@@ -15,7 +15,7 @@
 <p>Open this page from the local server (e.g. http://127.0.0.1:8765/tests/run.html). Every line should be green.</p>
 <div id="out"></div>
 <script type="module">
-  import { split, notation, packingRows, totals, movementBlocks, recordCartons, fmtWO, validate, handNotation, perCartonNotation, receiptState, hasReceipt, scanGroups } from '../src/model.js';
+  import { split, notation, packingRows, totals, movementBlocks, recordCartons, fmtWO, validate, handNotation, perCartonNotation, receiptState, hasReceipt, scanGroups, packingListLines, cartonPallet } from '../src/model.js';
   import { incrementDocNo, norm } from '../src/util.js';
   import { parseScan, cartonPayload } from '../src/qr.js';
   import { DEFAULT_SETTINGS } from '../src/store.js';
@@ -116,6 +116,33 @@
   // Validation
   eq('handoff does not need received by (warehouse confirms it)', validate({ ...slip, receivedBy: '' }), []);
   eq('valid slip passes', validate(slip), []);
+
+  // Supplier receipt from a supplier packing list (same columns as the group's packing lists; made-up codes)
+  const plHead = ['Customer PO', 'Customer Style', 'Internal Code', 'Description', 'Order Qty', 'Number\nof UOM', 'Qty\n/UOM', 'Net weight\n(1 carton)', 'Gross\nweight\n(1 carton)', 'L\n(1\ncarton)', 'W\n(1\ncarton)', 'H\n(1\ncarton)', 'Total\nN.W(KG)', 'boxes\n/Pallet', 'Pallet', 'Pallet\nNo', 'Pallet Net\nWeight\n(1 pallet)', 'L\n(1\npallet)\n(cm)'];
+  const plRows = [['IDEA L PACK B.V'], [], plHead,
+    ['PO-TEST-1', 'STYLE-A', 'ILPTST00000001', 'Printed box', 150000, 600, 250, 4.5, 5, 40, 24, 21, 2700, 50, 12, '1-12', 225, 120],
+    ['PO-TEST-1', 'STYLE-B', 'ILPTST00000002', 'Paper card', 500, 1, 500, 4.5, 5, 41, 24, 22, 4.5, '', '', '', '', ''],
+    ['PO-TEST-1', 'STYLE-B', 'ILPTST00000002', 'Paper card', 24000, 24, 1000, 9.5, 10, 41, 24, 22, 228, 24, 1, 14, 228, 120],
+    ['', '', '', '', 174500, 625, '', '', '', '', '', '', 2932.5]];
+  const pl = packingListLines(plRows);
+  eq('packing list: 3 item rows, totals row skipped', pl.lines.map((l) => [l.code, l.qty, l.ppc, l.nw, l.gw, l.l, l.w, l.h, l.po, l.ref, l.pallet]), [
+    ['ILPTST00000001', 150000, 250, 4.5, 5, 40, 24, 21, 'PO-TEST-1', 'STYLE-A', '1-12'],
+    ['ILPTST00000002', 500, 500, 4.5, 5, 41, 24, 22, 'PO-TEST-1', 'STYLE-B', ''],
+    ['ILPTST00000002', 24000, 1000, 9.5, 10, 41, 24, 22, 'PO-TEST-1', 'STYLE-B', '14']]);
+  eq('packing list: no warnings when cartons match', pl.warnings, []);
+  eq('packing list: title rows above the header are ignored', packingListLines([['IDEA L PACK B.V'], ['PACKING LIST'], plHead, plRows[3]]).lines.map((l) => [l.po, l.ref, l.code]), [['PO-TEST-1', 'STYLE-A', 'ILPTST00000001']]);
+  const twoRow = packingListLines([['Internal', 'Order', 'Number', 'Qty'], ['code', 'qty', 'of UOM', '/UOM'], ['ILPTST00000003', 1000, 4, 250]]);
+  eq('packing list: header split over two rows', twoRow.lines.map((l) => [l.code, l.qty, l.ppc]), [['ILPTST00000003', 1000, 250]]);
+  eq('packing list: carton count mismatch is reported', packingListLines([plHead, ['P', 'S', 'ILPTST00000004', 'x', 1000, 5, 250]]).warnings.length, 1);
+  eq('pallet of carton 51 with 50 per pallet on pallets 1-12', [cartonPallet({ pallet: '1-12', perPallet: 50 }, 1), cartonPallet({ pallet: '1-12', perPallet: 50 }, 51), cartonPallet({ pallet: '1-12', perPallet: 50 }, 600), cartonPallet({ pallet: '14' }, 3)], ['1', '2', '12', '14']);
+  const inb = { id: 'INB00001', type: 'inbound', docNo: 'SUP-PL-1', date: '2026-10-23', status: 'active', supplier: 'Test supplier', toWh: 'PACK', extRef: 'PO-TEST-1', noteNo: 'pnk0000001', lines: pl.lines, scans: [] };
+  const ic = recordCartons(inb);
+  eq('supplier receipt: one label per carton, numbered across the list', [ic.length, `${ic[0].n}/${ic[0].of}`, `${ic[624].n}/${ic[624].of}`, ic[624].pallet], [625, '1/625', '625/625', '14']);
+  eq('supplier receipt totals', (({ qty, cartons, gw }) => ({ qty, cartons, gw }))(totals(inb)), { qty: 174500, cartons: 625, gw: 3245 });
+  eq('supplier receipt waits for the warehouse', [hasReceipt(inb), receiptState(inb).status], [true, 'pending']);
+  eq('supplier receipt → In-out detail (Pack) row', movementBlocks(inb, DEFAULT_SETTINGS)[0].rows[0], ['SUP-PL-1', 'STYLE-A', 'ILPTST00000001', 150000, 600, 'in', '2026-10-23', 'Test supplier', 'pnk0000001']);
+  eq('supplier receipt needs a supplier', validate({ ...inb, supplier: '' }).length, 1);
+  eq('valid supplier receipt passes', validate(inb), []);
 
   out.insertAdjacentHTML('afterbegin', `<h2 class="${failed ? 'fail' : 'pass'}">${failed ? `${failed} failed, ${passed} passed` : `All ${passed} tests passed`}</h2>`);
   document.title = failed ? `✗ ${failed} failed` : `✓ ${passed} passed`;

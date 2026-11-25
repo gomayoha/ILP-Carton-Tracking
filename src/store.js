@@ -13,11 +13,12 @@ export const DEFAULT_SETTINGS = {
   ],
   defaults: {
     handoff: { fromWh: 'PRO', toWh: 'PRINT' },
+    inbound: { toWh: 'PACK' },
     transfer: { fromWh: 'PRINT', toWh: 'PACK' },
     shipment: { fromWh: 'PACK' },
   },
   // Last number already used on paper. The app suggests the next one.
-  seeds: { handoff: '0001955', transfer: 'TF000000', shipment: 'IDE0004000' },
+  seeds: { handoff: '0001955', inbound: '', transfer: 'TF000000', shipment: 'IDE0004000' },
   shippingMark: 'IDEA L PACK',
   origin: 'VIETNAM',
 };
@@ -192,14 +193,16 @@ export function nextDocNo(type) {
 }
 
 export function newRecord(type) {
-  const d = state.settings.defaults?.[type] || {};
+  const d = state.settings.defaults?.[type] || (type === 'inbound' ? { toWh: state.settings.defaults?.shipment?.fromWh || 'PACK' } : {});
   const rec = {
     id: newId(8), type, docNo: nextDocNo(type), date: today(), status: 'active',
-    fromWh: d.fromWh || '', toWh: type === 'shipment' ? '' : (d.toWh || ''),
+    fromWh: type === 'inbound' ? '' : (d.fromWh || ''), toWh: type === 'shipment' ? '' : (d.toWh || ''),
     lines: [], scans: [], nextLn: 1, note: '',
   };
   if (type === 'handoff') Object.assign(rec, { deliveredBy: '', receivedBy: '', noteNo: '' });
   if (type === 'transfer') Object.assign(rec, { extRef: '', outNoteNo: '', noteNo: '' });
+  // Supplier receipt: docNo = the supplier's packing list / invoice no.; extRef = our PO to the supplier.
+  if (type === 'inbound') Object.assign(rec, { supplier: '', extRef: '', noteNo: '', receivedBy: '', origin: '' });
   if (type === 'shipment') Object.assign(rec, {
     customer: '', shipTo: '', contact: '', salesperson: '', noteNo: '',
     shipDate: today(), shippingMark: state.settings.shippingMark || 'IDEA L PACK', origin: state.settings.origin || 'VIETNAM',

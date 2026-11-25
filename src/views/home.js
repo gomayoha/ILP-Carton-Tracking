@@ -19,7 +19,7 @@ export function RecordRow({ r }) {
     <span class=${'rec-ico t-' + r.type}><${Icon} name=${icon} /></span>
     <span class="rec-main">
       <b>${r.docNo || '—'}</b>
-      <small>${typeShort(r.type)} · ${fmtDate(r.date)}${r.customer ? ' · ' + r.customer : ''}${r.type !== 'shipment' && r.fromWh ? ` · ${r.fromWh} → ${r.toWh}` : ''}</small>
+      <small>${typeShort(r.type)} · ${fmtDate(r.date)}${r.customer ? ' · ' + r.customer : ''}${r.type === 'inbound' ? ` · ${r.supplier || ''} → ${r.toWh}` : r.type !== 'shipment' && r.fromWh ? ` · ${r.fromWh} → ${r.toWh}` : ''}</small>
     </span>
     <span class="rec-nums">
       <b>${fmtNum(t.qty)}</b><small>${t.cartons} ${tr('ctns', 'thùng')}</small>
@@ -75,6 +75,7 @@ export function Home() {
     <section class="actions-grid">
       <a class="action big" href="#/scan"><${Icon} name="scan" /><b>${tr('Scan a carton', 'Quét thùng')}</b><small>${tr('Camera or scanner gun', 'Camera hoặc súng quét')}</small></a>
       <a class="action" href="#/new/handoff"><${Icon} name="inbox" /><b>${tr('Production handoff', 'Giao nhận thành phẩm')}</b><small>${tr('PRO → WH slip + carton labels', 'Phiếu PRO → Kho + nhãn thùng')}</small></a>
+      <a class="action" href="#/new/inbound"><${Icon} name="upload" /><b>${tr('Supplier receipt', 'Nhập hàng NCC')}</b><small>${tr('Supplier packing list → carton labels', 'Packing list NCC → nhãn thùng')}</small></a>
       <a class="action" href="#/new/transfer"><${Icon} name="swap" /><b>${tr('Warehouse transfer', 'Chuyển kho')}</b><small>${tr('Scan cartons from one warehouse to another', 'Quét thùng chuyển giữa các kho')}</small></a>
       <a class="action" href="#/new/shipment"><${Icon} name="truck" /><b>${tr('Shipment', 'Xuất hàng')}</b><small>${tr('Packing list + shipping labels', 'Packing list + nhãn xuất hàng')}</small></a>
     </section>

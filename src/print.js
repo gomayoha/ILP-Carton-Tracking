@@ -46,6 +46,7 @@ function fscRow(fsc, labels) {
 export function labelHTML(carton, rec, preset, opts = {}) {
   const p = LABEL_PRESETS[preset] || LABEL_PRESETS['thermal-100x70'];
   const pack = rec.type === 'shipment';
+  const inbound = rec.type === 'inbound';
   const ref = LABEL_REF[pack ? 'pack' : 'print'];
   // `s` on a preset overrides the scale for wide, short labels (rows shrink to fit, so text can be larger than h/ref.h).
   const s = (!pack && p.s) || Math.min(p.w / ref.w, p.h / ref.h);
@@ -54,7 +55,7 @@ export function labelHTML(carton, rec, preset, opts = {}) {
   const n = String(carton.n).padStart(String(carton.of).length, '0');
   const row = (k, v, cls = '') => `<div class="lb-row ${cls}"><span class="lb-k">${k}</span><span class="lb-v">${esc(v)}</span></div>`;
   const qtyOne = carton.isPartial ? String(carton.qty) : (carton.perCarton || String(carton.qty));
-  const head = `<div class="lb-head">${logo}<b class="lb-title">${pack ? 'IDEA - L - PACK' : 'IDEA - L - PRINT'}</b><div class="lb-ctn"><b>${n}<i>/${carton.of}</i></b></div></div>`;
+  const head = `<div class="lb-head">${logo}<b class="lb-title">${pack ? 'IDEA - L - PACK' : inbound ? 'IDEA - L - INBOUND' : 'IDEA - L - PRINT'}</b><div class="lb-ctn"><b>${n}<i>/${carton.of}</i></b></div></div>`;
   let rows, fsc, foot;
   if (pack) {
     rows = [
@@ -71,11 +72,15 @@ export function labelHTML(carton, rec, preset, opts = {}) {
     const wo = fmtWO(carton.wo).replace(/^WO/, '');
     rows = [
       row('REFERENCE (MÃ):', [carton.code, carton.ref].filter(Boolean).join(' / '), 'ref'),
-      `<div class="lb-row two"><span class="lb-k">DATE (NGÀY):</span><span class="lb-v d">${esc(fmtDate(rec.date))}</span><span class="lb-k w">W/O:</span><span class="lb-v">${esc(wo)}</span></div>`,
+      inbound
+        ? `<div class="lb-row two"><span class="lb-k">DATE (NGÀY):</span><span class="lb-v d">${esc(fmtDate(rec.date))}</span><span class="lb-k w">PO:</span><span class="lb-v">${esc(carton.po)}</span></div>`
+        : `<div class="lb-row two"><span class="lb-k">DATE (NGÀY):</span><span class="lb-v d">${esc(fmtDate(rec.date))}</span><span class="lb-k w">W/O:</span><span class="lb-v">${esc(wo)}</span></div>`,
       `<div class="lb-row big"><span class="lb-k">QUANTITY (SỐ LƯỢNG):</span><span class="lb-v">${esc(qtyOne)}${carton.isPartial ? ' <em>LẺ · PARTIAL</em>' : ''}</span></div>`,
       row('GROSS.W (KL TỔNG):', kg(carton.gw)),
       row('NET.W (KL TỊNH):', kg(carton.nw)),
-      row('DIMENSION (KTT):', dimText(carton.l, carton.w, carton.h, 10, ' × ')),
+      inbound
+        ? `<div class="lb-row two"><span class="lb-k">DIM (cm):</span><span class="lb-v d">${esc(dimText(carton.l, carton.w, carton.h, 1, ' × '))}</span><span class="lb-k w">PALLET:</span><span class="lb-v">${esc(carton.pallet)}</span></div>`
+        : row('DIMENSION (KTT):', dimText(carton.l, carton.w, carton.h, 10, ' × ')),
       // TOTAL / ODD QUANTITY are on the slip, not the sticker (Ms Ly, Nov 2026): each sticker shows only its own carton.
     ].join('');
     fsc = fscRow(carton.fsc, ['100% FSC', 'FSC Mix Credit', 'FSC Recycled', 'Non FSC']);
@@ -90,7 +95,7 @@ export function labelHTML(carton, rec, preset, opts = {}) {
   </div>`;
 }
 
-const typeShortPrint = (t) => ({ handoff: 'PRO → WH', transfer: 'TRANSFER', shipment: 'SHIPMENT' }[t] || '');
+const typeShortPrint = (t) => ({ handoff: 'PRO → WH', inbound: 'SUPPLIER → WH', transfer: 'TRANSFER', shipment: 'SHIPMENT' }[t] || '');
 
 export function labelsPage(cartons, rec, preset, opts) {
   const p = LABEL_PRESETS[preset] || LABEL_PRESETS['thermal-100x70'];
@@ -110,11 +115,13 @@ export function labelsPage(cartons, rec, preset, opts) {
 
 export function slipHTML(rec) {
   const isHandoff = rec.type === 'handoff';
-  const from = warehouse(state.settings, rec.fromWh);
+  const isIn = rec.type === 'inbound';
+  const from = isIn ? { code: rec.supplier || '—', vi: 'Nhà cung cấp · Supplier' } : warehouse(state.settings, rec.fromWh);
   const to = warehouse(state.settings, rec.toWh);
   const t = totals(rec);
   const title = isHandoff
     ? ['PHIẾU GIAO NHẬN THÀNH PHẨM', 'TRANSFER, RECEIVE FINISH GOODS']
+    : isIn ? ['PHIẾU NHẬP HÀNG NHÀ CUNG CẤP', 'SUPPLIER GOODS RECEIPT']
     : ['PHIẾU CHUYỂN KHO', 'WAREHOUSE TRANSFER NOTE'];
   const lines = (rec.lines || []).map((l, i) => `<tr>
       <td class="c">${i + 1}</td>
@@ -138,6 +145,7 @@ export function slipHTML(rec) {
   const blank = Array.from({ length: minRows }, () => `<tr class="blank"><td></td><td></td><td></td>${isHandoff ? '<td></td>' : ''}<td></td><td></td><td></td>${isHandoff ? '<td></td>' : ''}</tr>`);
   const extra = isHandoff
     ? (rec.noteNo ? `<div><span>Số PNK / Receipt note</span><b>${esc(rec.noteNo)}</b></div>` : '')
+    : isIn ? `<div><span>PO</span><b>${esc(rec.extRef || '—')}</b></div><div><span>Xuất xứ / Origin</span><b>${esc(rec.origin || '—')}</b></div><div><span>Số PNK / Receipt note</span><b>${esc(rec.noteNo || '—')}</b></div>`
     : `<div><span>PO / POVN</span><b>${esc(rec.extRef || '—')}</b></div><div><span>Số PXK / Delivery note</span><b>${esc(rec.outNoteNo || '—')}</b></div><div><span>Số PNK / Receipt note</span><b>${esc(rec.noteNo || '—')}</b></div>`;
   return `<div class="doc slip">
     <header class="doc-head">

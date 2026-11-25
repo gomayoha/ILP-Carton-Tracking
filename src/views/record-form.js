@@ -1,4 +1,4 @@
-// One form for all three documents: production handoff, warehouse transfer, shipment.
+// One form for all documents: production handoff, supplier receipt, warehouse transfer, shipment.
 
 import { html, useState, useEffect, useRef } from '../../vendor/preact-htm.js';
 import { tr } from '../i18n.js';
@@ -9,6 +9,7 @@ import { num, round, fmtNum, fmtDec, newId, today, clean, go } from '../util.js'
 import { parseScan } from '../qr.js';
 import { Scanner, feedback } from './scanner.js';
 import { printLabels } from '../print.js';
+import { parsePackingListFile } from '../excel.js';
 
 const draftKey = (type) => `ilp.draft.new.${type}`;
 const unitOpts = () => UNITS.map((u) => ({ value: u.code, label: tr(u.en, u.vi) }));
@@ -34,6 +35,7 @@ function LineCard({ line, idx, type, onChange, onRemove, onDuplicate, showMore }
   const estPgw = estPnw !== '' ? round(estPnw + (tare > 0 ? tare : 0), 2) : '';
   const [more, setMore] = useState(showMore);
   const isShip = type === 'shipment';
+  const isIn = type === 'inbound';
 
   return html`<div class="line-card">
     <div class="line-head">
@@ -51,7 +53,7 @@ function LineCard({ line, idx, type, onChange, onRemove, onDuplicate, showMore }
     <div class="line-grid">
       <${Field} label=${tr('Customer ref', 'Mã khách hàng')}><${Input} value=${line.ref} onInput=${(v) => set({ ref: v })} /></${Field}>
       <${Field} label=${tr('Description', 'Tên hàng')} cls="span2"><${Input} value=${line.desc} onInput=${(v) => set({ desc: v })} /></${Field}>
-      ${isShip && html`<${Field} label="Customer PO"><${Input} value=${line.po} onInput=${(v) => set({ po: v })} /></${Field}>`}
+      ${(isShip || isIn) && html`<${Field} label="Customer PO"><${Input} value=${line.po} onInput=${(v) => set({ po: v })} /></${Field}>`}
       ${type === 'handoff' && html`<${Field} label=${tr('Requested qty', 'SL yêu cầu')}><${NumInput} value=${line.reqQty} onInput=${(v) => set({ reqQty: v })} /></${Field}>`}
       <${Field} label=${type === 'handoff' ? tr('Actual qty', 'SL thực nhận') : isShip ? tr('Order qty', 'SL đặt hàng') : tr('Quantity', 'Số lượng')} required>
         <${NumInput} value=${line.qty} onInput=${(v) => set({ qty: v })} />
@@ -67,9 +69,11 @@ function LineCard({ line, idx, type, onChange, onRemove, onDuplicate, showMore }
         <div class="dims"><${NumInput} value=${line.l} onInput=${(v) => set({ l: v })} placeholder="L" /><span>×</span><${NumInput} value=${line.w} onInput=${(v) => set({ w: v })} placeholder="W" /><span>×</span><${NumInput} value=${line.h} onInput=${(v) => set({ h: v })} placeholder="H" /></div>
       </${Field}>
       <${Field} label=${tr('FSC', 'FSC')}><${Select} value=${line.fsc || ''} onChange=${(v) => set({ fsc: v })} options=${[{ value: '', label: tr('— not marked —', '— chưa đánh dấu —') }, ...FSC.map((f) => ({ value: f.code, label: f.label }))]} /></${Field}>
+      ${isIn && html`<${Field} label=${tr('Pallet no.', 'Số pallet')} hint=${tr('e.g. 13 or 1-12', 'vd. 13 hoặc 1-12')}><${Input} value=${line.pallet || ''} onInput=${(v) => set({ pallet: v })} /></${Field}>
+        <${Field} label=${tr('Cartons per pallet', 'Số thùng / pallet')}><${NumInput} value=${line.perPallet || ''} onInput=${(v) => set({ perPallet: v })} /></${Field}>`}
       <${Field} label=${tr('Pcs per bundle', 'SL / bó')} hint=${tr('Optional: prints 4×25=100', 'Tùy chọn: in dạng 4×25=100')}><${NumInput} value=${line.bundle} onInput=${(v) => set({ bundle: v })} /></${Field}>
     </div>
-    ${isShip && sp.partial > 0 && html`<div class="partial-box">
+    ${(isShip || isIn) && sp.partial > 0 && html`<div class="partial-box">
       <div><b>${tr('Partial carton', 'Thùng lẻ')}: ${fmtNum(sp.partial)} ${unitLabel(line.unit)}</b>
         <small>${tr('Weigh it — the estimate is only proportional.', 'Hãy cân thùng này — số ước tính chỉ theo tỷ lệ.')}</small></div>
       <${Field} label=${tr('N.W (kg)', 'TL tịnh (kg)')}><${NumInput} value=${line.pnw} onInput=${(v) => set({ pnw: v })} placeholder=${estPnw !== '' ? `≈ ${estPnw}` : ''} /></${Field}>
@@ -152,6 +156,45 @@ function ScannedList({ rec, setRec }) {
   </div>`;
 }
 
+// ── Supplier packing list import (supplier receipt) ─────────────────────────
+
+function ImportPackingList({ rec, setRec }) {
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null);
+  const onFile = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    if (/\.pdf$/i.test(file.name)) {
+      setResult({ bad: true, warnings: [tr('A PDF cannot be read. Please ask the supplier for the packing list in Excel (.xlsx), or type the lines below.', 'Không đọc được file PDF. Hãy xin nhà cung cấp packing list dạng Excel (.xlsx), hoặc nhập các dòng bên dưới.')] });
+      return;
+    }
+    setBusy(true);
+    try {
+      const keep = rec.lines.filter((l) => clean(l.code) || num(l.qty) > 0);
+      const res = await parsePackingListFile(file, { firstLn: rec.nextLn });
+      if (res.lines.length) {
+        setRec((r) => ({ ...r, lines: [...keep, ...res.lines], nextLn: r.nextLn + res.lines.length,
+          extRef: r.extRef || ([...new Set(res.lines.map((l) => l.po).filter(Boolean))].length === 1 ? res.lines[0].po : r.extRef) }));
+      }
+      const cartons = res.lines.reduce((a, l) => a + split(l.qty, l.ppc).count, 0);
+      setResult({ file: file.name, lines: res.lines.length, cartons, qty: res.lines.reduce((a, l) => a + num(l.qty), 0), warnings: res.warnings, bad: !res.lines.length });
+    } catch (err) {
+      setResult({ bad: true, warnings: [tr('Could not read this file: ', 'Không đọc được file: ') + (err.message || err)] });
+    }
+    setBusy(false);
+  };
+  return html`<div class="card import-pl">
+    <div class="block-title"><h3>${tr('Supplier packing list', 'Packing list của nhà cung cấp')}</h3></div>
+    <p class="muted small">${tr('Upload the supplier\'s packing list in Excel. Each row becomes a line; the cartons and their QR labels are created from it. Check the lines below before saving.', 'Tải lên packing list Excel của nhà cung cấp. Mỗi dòng thành một mã hàng; các thùng và nhãn QR được tạo từ đó. Kiểm tra các dòng bên dưới trước khi lưu.')}</p>
+    <label class=${'btn primary' + (busy ? ' disabled' : '')}><${Icon} name="upload" /><span>${busy ? tr('Reading…', 'Đang đọc…') : tr('Upload packing list (.xlsx)', 'Tải packing list (.xlsx)')}</span>
+      <input type="file" accept=".xlsx,.xls,.csv,.pdf" hidden onChange=${onFile} disabled=${busy} /></label>
+    ${result && html`<div class=${'banner ' + (result.bad ? 'bad' : result.warnings.length ? 'warn' : 'info')}><${Icon} name=${result.bad ? 'alert' : 'check'} /><div>
+      ${!result.bad && html`<b>${result.file}</b>: ${tr(`${result.lines} lines · ${fmtNum(result.qty)} pcs · ${result.cartons} cartons (labels) added.`, `đã thêm ${result.lines} dòng · ${fmtNum(result.qty)} sp · ${result.cartons} thùng (nhãn).`)}`}
+      ${result.warnings.length > 0 && html`<ul>${result.warnings.map((w) => html`<li>${w}</li>`)}</ul>`}</div></div>`}
+  </div>`;
+}
+
 // ── The form ────────────────────────────────────────────────────────────────
 
 export function RecordForm({ type: typeProp, editId, copyFrom }) {
@@ -170,7 +213,7 @@ export function RecordForm({ type: typeProp, editId, copyFrom }) {
       if (d && d.type === typeProp && ((d.lines || []).length || (d.scans || []).length)) { setTimeout(() => setRestored(true)); return { ...d, docNo: docNoTaken(typeProp, d.docNo) ? nextDocNo(typeProp) : d.docNo }; }
     } catch {}
     const r = newRecord(typeProp);
-    r.lines = typeProp === 'transfer' ? [] : [blankLine(1)];
+    r.lines = typeProp === 'transfer' || typeProp === 'inbound' ? [] : [blankLine(1)];
     r.nextLn = r.lines.length ? 2 : 1;
     return r;
   });
@@ -215,7 +258,7 @@ export function RecordForm({ type: typeProp, editId, copyFrom }) {
   const discardDraft = () => {
     try { localStorage.removeItem(draftKey(type)); } catch {}
     const r = newRecord(type);
-    r.lines = type === 'transfer' ? [] : [blankLine(1)];
+    r.lines = type === 'transfer' || type === 'inbound' ? [] : [blankLine(1)];
     r.nextLn = r.lines.length ? 2 : 1;
     setRec(r); setRestored(false);
   };
@@ -223,6 +266,7 @@ export function RecordForm({ type: typeProp, editId, copyFrom }) {
   const wh = s.settings.warehouses;
   const titles = {
     handoff: [tr('Production handoff', 'Giao nhận thành phẩm'), tr('Replaces the paper slip "Phiếu Giao Nhận Thành Phẩm". Each carton gets a QR label.', 'Thay cho phiếu giấy "Phiếu Giao Nhận Thành Phẩm". Mỗi thùng có một nhãn QR.')],
+    inbound: [tr('Supplier receipt', 'Nhập hàng từ nhà cung cấp'), tr('Goods arriving from a supplier. Upload the supplier\'s packing list: each carton gets a QR label, then the warehouse scans to confirm receipt.', 'Hàng nhập từ nhà cung cấp. Tải packing list của nhà cung cấp: mỗi thùng có một nhãn QR, sau đó kho quét để xác nhận nhận hàng.')],
     transfer: [tr('Warehouse transfer', 'Chuyển kho'), tr('Scan the labelled cartons that are moving. Unlabelled goods can be added as lines and get labels now.', 'Quét các thùng đã có nhãn được chuyển đi. Hàng chưa có nhãn có thể thêm thành dòng và in nhãn ngay.')],
     shipment: [tr('Shipment / packing list', 'Xuất hàng / packing list'), tr('Scan the production cartons that ship as they are. Only goods repacked into new cartons are entered below and get new labels.', 'Quét các thùng sản xuất xuất nguyên. Chỉ hàng đóng lại thùng mới được nhập bên dưới và in nhãn mới.')],
   }[type];
@@ -235,18 +279,23 @@ export function RecordForm({ type: typeProp, editId, copyFrom }) {
 
     <div class="card form-card">
       <div class="form-grid">
-        <${Field} label=${type === 'handoff' ? tr('Slip no. (Số)', 'Số phiếu') : type === 'shipment' ? tr('Invoice / packing no.', 'Số invoice / packing') : tr('Transfer no.', 'Số phiếu chuyển')} required
+        <${Field} label=${type === 'handoff' ? tr('Slip no. (Số)', 'Số phiếu') : type === 'shipment' ? tr('Invoice / packing no.', 'Số invoice / packing') : type === 'inbound' ? tr('Supplier packing list / invoice no.', 'Số packing list / invoice của NCC') : tr('Transfer no.', 'Số phiếu chuyển')} required
           error=${taken ? tr(`Already used by ${taken.docNo} on ${taken.date}`, `Đã dùng cho phiếu ngày ${taken.date}`) : ''}
           hint=${type === 'handoff' && !editing ? tr('Continues the paper slip numbering', 'Tiếp nối số phiếu giấy') : ''}>
           <${Input} value=${rec.docNo} onInput=${(v) => set({ docNo: v })} cls="mono" />
         </${Field}>
         <${Field} label=${tr('Date', 'Ngày')} required><${Input} type="date" value=${rec.date} onInput=${(v) => set({ date: v })} /></${Field}>
-        <${Field} label=${tr('From', 'Từ')}><${WhSelect} value=${rec.fromWh} onChange=${(v) => set({ fromWh: v })} warehouses=${wh} /></${Field}>
-        ${type !== 'shipment' && html`<${Field} label=${tr('To', 'Đến')}><${WhSelect} value=${rec.toWh} onChange=${(v) => set({ toWh: v })} warehouses=${wh} /></${Field}>`}
+        ${type === 'inbound' ? html`<${Field} label=${tr('Supplier', 'Nhà cung cấp')} required><${Input} value=${rec.supplier} onInput=${(v) => set({ supplier: v })} /></${Field}>`
+          : html`<${Field} label=${tr('From', 'Từ')}><${WhSelect} value=${rec.fromWh} onChange=${(v) => set({ fromWh: v })} warehouses=${wh} /></${Field}>`}
+        ${type !== 'shipment' && html`<${Field} label=${type === 'inbound' ? tr('Receiving warehouse', 'Kho nhận') : tr('To', 'Đến')}><${WhSelect} value=${rec.toWh} onChange=${(v) => set({ toWh: v })} warehouses=${wh} /></${Field}>`}
         ${type === 'handoff' && html`
           <${Field} label=${tr('Delivered by', 'Người giao (xuất)')}><${Input} value=${rec.deliveredBy} onInput=${(v) => set({ deliveredBy: v })} /></${Field}>
           <${Field} label=${tr('Received by', 'Người nhận')} hint=${tr('Optional — the warehouse confirms receipt on the saved slip', 'Tùy chọn — kho xác nhận nhận hàng trên phiếu đã lưu')}><${Input} value=${rec.receivedBy} onInput=${(v) => set({ receivedBy: v })} /></${Field}>
           <${Field} label=${tr('Receipt note no. (PNK)', 'Số phiếu nhập kho (PNK)')}><${Input} value=${rec.noteNo} onInput=${(v) => set({ noteNo: v })} placeholder="PNK0003012" /></${Field}>`}
+        ${type === 'inbound' && html`
+          <${Field} label=${tr('Our PO to the supplier', 'PO của mình gửi NCC')}><${Input} value=${rec.extRef} onInput=${(v) => set({ extRef: v })} placeholder="PO-…" /></${Field}>
+          <${Field} label=${tr('Country of origin', 'Xuất xứ')}><${Input} value=${rec.origin} onInput=${(v) => set({ origin: v })} /></${Field}>
+          <${Field} label=${tr('Receipt note no. (PNK)', 'Số phiếu nhập kho (PNK)')}><${Input} value=${rec.noteNo} onInput=${(v) => set({ noteNo: v })} /></${Field}>`}
         ${type === 'transfer' && html`
           <${Field} label="PO / POVN"><${Input} value=${rec.extRef} onInput=${(v) => set({ extRef: v })} placeholder="POVN-2600087" /></${Field}>
           <${Field} label=${tr('Delivery note no. (PXK, sending side)', 'Số phiếu xuất kho (PXK, bên giao)')}><${Input} value=${rec.outNoteNo} onInput=${(v) => set({ outNoteNo: v })} placeholder="pxk0006343" /></${Field}>
@@ -264,13 +313,14 @@ export function RecordForm({ type: typeProp, editId, copyFrom }) {
       </div>
     </div>
 
-    ${type !== 'handoff' && html`<div class="scan-cta">
+    ${type === 'inbound' && html`<${ImportPackingList} rec=${rec} setRec=${setRec} />`}
+    ${type !== 'handoff' && type !== 'inbound' && html`<div class="scan-cta">
       <${Btn} kind="primary" icon="scan" onClick=${() => setScanOpen(true)}>${tr('Scan cartons', 'Quét thùng')}</${Btn}>
       <span class="muted">${type === 'transfer' ? tr('Fastest way: scan every carton that is moving.', 'Cách nhanh nhất: quét từng thùng được chuyển.') : tr('Scan the production cartons being shipped — they keep their original labels and QR.', 'Quét các thùng sản xuất được xuất đi — giữ nguyên nhãn và QR ban đầu.')}</span>
     </div>`}
     <${ScannedList} rec=${rec} setRec=${setRec} />
 
-    <div class="block-title lines-title"><h3>${type === 'transfer' ? tr('Unlabelled goods', 'Hàng chưa có nhãn') : type === 'shipment' ? tr('Repacked into new cartons (new labels)', 'Đóng lại vào thùng mới (nhãn mới)') : tr('Items', 'Mã hàng')}</h3>
+    <div class="block-title lines-title"><h3>${type === 'inbound' ? tr('Items on the packing list', 'Hàng trên packing list') : type === 'transfer' ? tr('Unlabelled goods', 'Hàng chưa có nhãn') : type === 'shipment' ? tr('Repacked into new cartons (new labels)', 'Đóng lại vào thùng mới (nhãn mới)') : tr('Items', 'Mã hàng')}</h3>
       <span>${rec.lines.length} ${tr(rec.lines.length === 1 ? 'line' : 'lines', 'dòng')}</span></div>
     <div class="lines">
       ${rec.lines.map((l, i) => html`<${LineCard} key=${l.ln} line=${l} idx=${i} type=${type} onChange=${(nl) => setLine(i, nl)} onRemove=${() => removeLine(i)} onDuplicate=${() => dupLine(i)} />`)}
@@ -281,7 +331,8 @@ export function RecordForm({ type: typeProp, editId, copyFrom }) {
       <div class="form-totals">
         <div><b>${fmtNum(t.qty, t.qty % 1 ? 2 : 0)}</b><small>${t.unit ? unitLabel(t.unit) : tr('total qty', 'tổng SL')}</small></div>
         <div><b>${t.cartons}</b><small>${tr('cartons', 'thùng')}</small></div>
-        ${type === 'shipment' ? html`<div><b>${fmtDec(t.gw, 2)}</b><small>G.W kg</small></div><div><b>${fmtDec(t.cbm, 3)}</b><small>CBM</small></div>`
+        ${type === 'inbound' ? html`<div><b>${labels}</b><small>${tr('new labels', 'nhãn mới')}</small></div><div><b>${fmtDec(t.gw, 2)}</b><small>G.W kg</small></div>`
+          : type === 'shipment' ? html`<div><b>${fmtDec(t.gw, 2)}</b><small>G.W kg</small></div><div><b>${fmtDec(t.cbm, 3)}</b><small>CBM</small></div>`
           : html`<div><b>${labels}</b><small>${tr('new labels', 'nhãn mới')}</small></div>`}
       </div>
       <div class="form-buttons">

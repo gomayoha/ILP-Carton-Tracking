@@ -1,7 +1,7 @@
 // Excel in and out. SheetJS (≈1 MB) is only loaded when one of these functions is used.
 
 import { loadScript, norm, clean, num, today, fmtDate, toCSV, downloadFile } from './util.js';
-import { packingRows, totals, movementBlocks, LAYOUTS, recordCartons, split, fmtWO, warehouse, scanGroups } from './model.js';
+import { packingRows, totals, movementBlocks, LAYOUTS, recordCartons, split, fmtWO, warehouse, scanGroups, packingListLines } from './model.js';
 import { itemToRow, rowToItem } from './store.js';
 
 async function XLSX() {
@@ -106,6 +106,21 @@ export async function parseItemFiles(files, existingRows = []) {
     },
     sample: list.filter((i) => i.ref).slice(0, 6),
   };
+}
+
+// ── Supplier packing list import ────────────────────────────────────────────
+// Takes the sheet with the most item rows. Returns { lines, warnings, sheet }.
+
+export async function parsePackingListFile(file, opts) {
+  const X = await XLSX();
+  const wb = X.read(await file.arrayBuffer(), { type: 'array', dense: true });
+  let best = null;
+  for (const name of wb.SheetNames) {
+    const rows = X.utils.sheet_to_json(wb.Sheets[name], { header: 1, raw: true, defval: '', blankrows: false });
+    const res = packingListLines(rows, opts);
+    if (!best || res.lines.length > best.lines.length) best = { ...res, sheet: name };
+  }
+  return best || { lines: [], warnings: [], sheet: '' };
 }
 
 // ── Exports ─────────────────────────────────────────────────────────────────
