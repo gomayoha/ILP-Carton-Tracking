@@ -55,7 +55,7 @@ Read this before changing anything.
 ## Ms Ly's process sheet (26 Nov 2026, "QR project detail data (1).xlsx")
 - **Inbound:** every location has its own QR. Goods arrive with a packing list / delivery note. **Overseas suppliers: PDF before the goods arrive. Local suppliers: paper delivery note with the goods (no PDF) → both PDF and photo are needed.** The system defines item code, description, packing spec, receiving date, supplier name, PO / invoice no., number of stickers. Paste a sticker on each carton; put away = scan the location QR, then the carton QRs. Export the list just received in the "QR in" layout (Record → "Received list (QR in) .xlsx").
 - Her questions, all yes: count cartons per location (Stock page); scanning twice records once; a damaged sticker is reprinted with the same QR.
-- **Outbound:** the shipping request comes from the merchandiser ("Mer") as Excel: PO REF. (IDE… order/invoice no.), COMPONENT CODE (customer code), INTERNAL REF. (ILP code), Balance (qty), ETD, Place ship (customer). Upload it as the shipment's pick list → shows qty to pick, **stock on hand** and **locations, oldest stock first (FIFO)** (`pickSuggest`). After picking, scan all cartons → packing list.
+- **Outbound:** the shipping request comes from Merchandising ("Mer", the merchandiser team) as Excel: PO REF. (IDE… order/invoice no.), COMPONENT CODE (customer code), INTERNAL REF. (ILP code), Balance (qty), ETD, Place ship (customer). Upload it as the shipment's pick list → shows qty to pick, **stock on hand** and **locations, oldest stock first (FIFO)** (`pickSuggest`). After picking, scan all cartons → packing list.
 - **Warehouses:** Idea L Pack B.V (France: phones, stickers 105 × 74 mm; goods come from a supplier, Pack CN and Print), Idea L Pack CN / EX / HK (one responsible person), IDEA L PACK MENA FZ LLC (UAE, run by an outside logistics company). Contact names are kept in Claude's private memory, not in this public repo. **Working language everywhere: English** (no Chinese / French screens needed).
 
 ## Boss's scope (MD email, 23 Nov 2026)
@@ -78,6 +78,7 @@ Waiting on Yohan
 - [ ] Switch on login mode before real POs go in
 
 Waiting on Ms Ly
+- [ ] Questions sent 26 Nov 2026 (answers change the build): (1) partial picks — do they open cartons and take pieces? (carton qty would need updating) (2) pcs per carton from the item list when the paper lacks it — OK, or always count? (3) same location naming everywhere (Rack.Level.Position like France)? (4) FIFO by receiving date or production date? (5) OK to use an online AI service for photos if the free reading isn't accurate (IT approval)? (6) ever more than one item code in one carton?
 - [ ] Raw materials (VN): how they arrive (pallets / rolls / cartons) and which unit (kg, roll, sheet). Not built: stock-in works the same way, but issuing raw materials to Production is not built (asked 25 Nov 2026)
 - [ ] Info per warehouse (China, France, UAE): contact, inbound docs, locations, pick up, outbound, volume, equipment, stock report, language
 
