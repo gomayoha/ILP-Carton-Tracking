@@ -403,19 +403,20 @@ export function validate(rec, { docNoTaken } = {}) {
 
 const key = (s) => norm(s).replace(/[^a-z0-9]/g, '');
 const PL_COLS = [
-  ['code', (k) => ['internalcode', 'interalcode', 'ilpcode', 'sku', 'itemcode', 'mahang', 'ideaitemno', 'ideaitem', 'ourref'].includes(k) || k.startsWith('internalcode')],
+  ['code', (k) => ['internalcode', 'interalcode', 'ilpcode', 'sku', 'itemcode', 'mahang', 'ideaitemno', 'ideaitem', 'ourref', 'mavattu', 'mavt', 'masanpham'].includes(k) || k.startsWith('internalcode')],
   ['po', (k) => ['customerpo', 'po', 'pono', 'purchaseorder'].includes(k) || k.startsWith('customerpo') || k.startsWith('ponumber')],
   ['ref', (k) => ['customerstyle', 'customercode', 'customerref', 'customeritemno', 'yourref', 'reference', 'referenceno', 'refno', 'makhachhang', 'makh'].some((x) => k.startsWith(x))],
-  ['desc', (k) => k.startsWith('description') || k.startsWith('tenhang') || k === 'productname'],
+  ['desc', (k) => k.startsWith('description') || k.startsWith('tenhang') || k === 'productname' || k.startsWith('tenvattu') || k.startsWith('tennhanhieu') || k.startsWith('tensanpham')],
   ['uoms', (k) => k.startsWith('numberofuom') || ['cartons', 'ctns', 'noofcartons', 'numberofcartons', 'sothung', 'cartonqty'].includes(k)],
   ['ppc', (k) => k.startsWith('qtyuom') || k.startsWith('quantityuom') || ['pcscarton', 'pcsctn', 'qtycarton', 'qtyctn', 'pcsbox', 'qtybox'].includes(k)],
   ['qty', (k) => k.startsWith('orderqty') || ['qty', 'quantity', 'quantitypc', 'quantitypcs', 'shippedqty', 'totalqty', 'totalquantity', 'qtypcs', 'soluong',
-    'quantityreceive', 'quantityreceived', 'qtyreceive', 'qtyreceived', 'receivedqty'].includes(k)],
+    'quantityreceive', 'quantityreceived', 'qtyreceive', 'qtyreceived', 'receivedqty'].includes(k) || k.includes('thucxuat') || k.includes('thucnhap') || k.endsWith('thucgiao')],
   ['nw', (k) => (k.startsWith('netweight') || k.startsWith('nw')) && !k.includes('pallet')],
   ['gw', (k) => (k.startsWith('grossweight') || k.startsWith('gw')) && !k.includes('pallet')],
   ['l', (k) => !k.includes('pallet') && (k === 'l' || k.startsWith('l1carton') || ['lcm', 'length', 'lengthcm', 'lenght', 'lenghtcm'].includes(k))],
   ['w', (k) => !k.includes('pallet') && (k === 'w' || k.startsWith('w1carton') || ['wcm', 'width', 'widthcm'].includes(k))],
   ['h', (k) => !k.includes('pallet') && (k === 'h' || k.startsWith('h1carton') || ['hcm', 'height', 'heightcm'].includes(k))],
+  ['dims', (k) => ['quycach', 'dimension', 'dimensions', 'kichthuoc', 'kichthuocthung', 'size', 'cartonsize'].includes(k) || k.startsWith('dimension')],
   ['location', (k) => ['location', 'vitri', 'loc', 'binlocation'].includes(k)],
   ['entity', (k) => ['entities', 'entity', 'company'].includes(k)],
   ['supplierName', (k) => ['suppliername', 'supliername', 'supplier', 'nhacungcap'].includes(k)],
@@ -444,6 +445,17 @@ export function packingListLines(rows, { firstLn = 1 } = {}) {
   const top = Math.min(rows.length, 25);
   // First a one-row header; only if there is none, a header split over two rows
   // ("Internal" / "code"): each column's text joined with the row below.
+  // Column whose cells below the header really are ILP codes (some delivery notes write the code under "name").
+  const codeCol = (from, used) => {
+    let best = -1, hits = 0;
+    const w = Math.max(...rows.slice(from, from + 30).map((r) => (r || []).length), 0);
+    for (let j = 0; j < w; j++) {
+      if (used.has(j)) continue;
+      const n = rows.slice(from, from + 30).filter((r) => ILP_IN.test(clean((r || [])[j]))).length;
+      if (n > hits) { hits = n; best = j; }
+    }
+    return best;
+  };
   for (let hi = 0; hi < top && !col; hi++) {
     const one = plColumns(rows[hi] || []);
     if (ok(one)) { col = one; start = hi + 1; }
@@ -454,6 +466,23 @@ export function packingListLines(rows, { firstLn = 1 } = {}) {
     const two = plColumns(Array.from({ length: width }, (_, j) => `${txt((rows[hi] || [])[j])} ${txt(next[j])}`));
     if (ok(two)) { col = two; start = hi + 2; }
   }
+  // Last resort: a header with a quantity column but no code column — use the column that holds ILP codes.
+  for (let hi = 0; hi < top && !col; hi++) {
+    const one = plColumns(rows[hi] || []);
+    if (one.code !== undefined || one.qty === undefined) continue;
+    const c = codeCol(hi + 1, new Set([one.qty, one.ppc, one.uoms].filter((x) => x !== undefined)));
+    if (c >= 0) { one.code = c; col = one; start = hi + 1; }
+  }
+  // Unit column not named clearly (header text merged with a neighbour): the column whose cells are unit words.
+  if (col && col.unit === undefined) {
+    const used = new Set(Object.values(col));
+    const w = Math.max(...rows.slice(start, start + 30).map((r) => (r || []).length), 0);
+    for (let j = 0; j < w && col.unit === undefined; j++) {
+      if (used.has(j)) continue;
+      const cells = rows.slice(start, start + 30).map((r) => clean((r || [])[j])).filter(Boolean);
+      if (cells.length && cells.filter((c) => UNIT_MAP[norm(c).replace(/[^a-z]/g, '')]).length >= Math.max(1, cells.length * 0.6)) col.unit = j;
+    }
+  }
   if (!col) return { lines: [], warnings: [tr('No packing list header found (needs at least Internal code and Quantity columns).', 'Không tìm thấy dòng tiêu đề packing list (cần ít nhất cột Internal code và Số lượng).')] };
   const lines = [];
   const warnings = [];
@@ -463,8 +492,9 @@ export function packingListLines(rows, { firstLn = 1 } = {}) {
   for (let r = start; r < rows.length; r++) {
     const row = rows[r] || [];
     const get = (f) => (col[f] === undefined ? '' : row[col[f]]);
-    const code = txt(get('code')).toUpperCase();
-    if (!code || /\s/.test(code)) continue; // totals, notes, addresses
+    const rawCode = txt(get('code')).toUpperCase();
+    const code = (rawCode.match(ILP_IN) || [rawCode])[0];
+    if (!code || /\s/.test(code) || /^(total|tong|cong|sum)/.test(norm(code).replace(/[^a-z]/g, ''))) continue; // totals, notes, addresses
     let qty = num(get('qty')), ppc = num(get('ppc'));
     const uoms = num(get('uoms'));
     if (!qty && uoms && ppc) qty = round(uoms * ppc, 3);
@@ -479,9 +509,10 @@ export function packingListLines(rows, { firstLn = 1 } = {}) {
     const sp = split(qty, ppc);
     if (uoms && sp.count && sp.count !== uoms) warnings.push(tr(`Row ${r + 1} (${code}): the list says ${uoms} cartons, but ${fmtNum(qty)} ÷ ${fmtNum(ppc)} gives ${sp.count}.`, `Dòng ${r + 1} (${code}): packing list ghi ${uoms} thùng, nhưng ${fmtNum(qty)} ÷ ${fmtNum(ppc)} = ${sp.count} thùng.`));
     const n = (f) => (num(get(f)) > 0 ? num(get(f)) : '');
+    const dm = parseDims(get('dims'));
     lines.push({
-      ln: ln++, code, ref: txt(get('ref')), desc: txt(get('desc')), unit: unitCode(get('unit')), qty, ppc: ppc || '', reqQty: '', wo: '', po: txt(get('po')),
-      nw: n('nw'), gw: n('gw'), pnw: '', pgw: '', l: n('l'), w: n('w'), h: n('h'), printDate: '', packDate: '', fsc: '', bundle: '',
+      ln: ln++, code, ref: txt(get('ref')), desc: col.desc === col.code ? '' : txt(get('desc')), unit: unitCode(get('unit')), qty, ppc: ppc || '', reqQty: '', wo: '', po: txt(get('po')),
+      nw: n('nw'), gw: n('gw'), pnw: '', pgw: '', l: n('l') || dm.l, w: n('w') || dm.w, h: n('h') || dm.h, printDate: '', packDate: '', fsc: '', bundle: '',
       pallet: txt(get('pallet')), perPallet: n('perPallet'), location: txt(get('location')).toUpperCase(), entity: txt(get('entity')),
       supplierCode: txt(get('supplierCode')), supplierName: txt(get('supplierName')), stockInDate: excelDate(get('date')),
     });
@@ -491,7 +522,18 @@ export function packingListLines(rows, { firstLn = 1 } = {}) {
   return { lines, warnings, supplier: suppliers.size === 1 ? [...suppliers][0] : '', date: dates.size === 1 ? [...dates][0] : '' };
 }
 
-const UNIT_MAP = { pcs: 'piece', pc: 'piece', pce: 'piece', piece: 'piece', cai: 'piece', box: 'box', hop: 'box', set: 'set', bo: 'set', roll: 'roll', cuon: 'roll', sheet: 'sheet', to: 'sheet', ream: 'ream', pair: 'pair', kg: 'kg' };
+const ILP_IN = /ILP[A-Z0-9]{6,}/;
+
+// "600*400*360" / "40 x 24 x 21" → cm. Values over 150 are taken as millimetres (cartons are not 1.5 m long).
+export function parseDims(v) {
+  const m = clean(v).replace(/,/g, '.').match(/(\d+(?:\.\d+)?)\s*[*x×X]\s*(\d+(?:\.\d+)?)\s*[*x×X]\s*(\d+(?:\.\d+)?)/);
+  if (!m) return { l: '', w: '', h: '' };
+  const d = [+m[1], +m[2], +m[3]];
+  const k = Math.max(...d) > 150 ? 0.1 : 1;
+  return { l: round(d[0] * k, 1), w: round(d[1] * k, 1), h: round(d[2] * k, 1) };
+}
+
+const UNIT_MAP = { lo: 'piece', chai: 'piece', thung: 'box', pcs: 'piece', pc: 'piece', pce: 'piece', piece: 'piece', cai: 'piece', box: 'box', hop: 'box', set: 'set', bo: 'set', roll: 'roll', cuon: 'roll', sheet: 'sheet', to: 'sheet', ream: 'ream', pair: 'pair', kg: 'kg' };
 const unitCode = (v) => UNIT_MAP[norm(v).replace(/[^a-z]/g, '')] || 'piece';
 
 // Excel dates arrive as serial numbers (raw) or Date objects; text like 01/11/2026 is day-first.
@@ -600,4 +642,86 @@ export function stockDataRows(ledger, { wh, inStockOnly = false } = {}) {
     .map((c) => [c.entity, c.ref, c.code, c.desc, c.cid, UNIT_OUT[c.unit] || c.unit || 'pcs', locLabel(c.loc), c.qty,
       c.l || '', c.w || '', c.h || '', c.nw || '', c.gw || '', c.l && c.w && c.h ? round((num(c.l) * num(c.w) * num(c.h)) / 1e6, 6) : '',
       c.inDate || '', c.po || '', c.supCode, c.supName, c.shipped ? c.shipped.date : '', c.shipped ? c.shipped.invoice : '', c.shipped ? c.shipped.customer : '']);
+}
+
+// ── PDF text → table rows ───────────────────────────────────────────────────
+// pdf.js gives positioned text pieces. Group them into lines (same y) and cells (gaps in x),
+// then line every row up under the columns of the widest item row, with the header text found
+// just above the first item row stacked per column. The result feeds packingListLines().
+
+// "1.000" (Vietnamese thousands) → 1000; "2,700.00" → 2700; anything else stays text.
+export function docNum(s) {
+  const t = clean(s);
+  if (/^\d{1,3}(\.\d{3})+$/.test(t)) return +t.replace(/\./g, '');
+  if (/^\d{1,3}(,\d{3})+(\.\d+)?$/.test(t)) return +t.replace(/,/g, '');
+  if (/^\d+([.,]\d+)?$/.test(t)) return +t.replace(',', '.');
+  return t;
+}
+
+// items: [{ s, x, y, w, h, page }] (y grows upward inside a page, as in PDF).
+export function textToLines(items) {
+  const sorted = items.filter((i) => clean(i.s)).sort((a, b) => a.page - b.page || b.y - a.y || a.x - b.x);
+  const lines = [];
+  for (const it of sorted) {
+    const tol = Math.max(2, (it.h || 8) * 0.5);
+    let line = lines.find((l) => l.page === it.page && Math.abs(l.y - it.y) <= tol);
+    if (!line) { line = { page: it.page, y: it.y, items: [] }; lines.push(line); }
+    line.items.push(it);
+  }
+  for (const l of lines) {
+    l.items.sort((a, b) => a.x - b.x);
+    l.cells = [];
+    for (const it of l.items) {
+      const last = l.cells[l.cells.length - 1];
+      const gap = last ? it.x - last.x1 : Infinity;
+      if (last && gap < Math.max(3, (it.h || 8) * 0.8)) { last.s += (gap > 0.5 ? ' ' : '') + it.s; last.x1 = Math.max(last.x1, it.x + it.w); }
+      else l.cells.push({ s: it.s, x0: it.x, x1: it.x + it.w });
+    }
+    l.cells.forEach((c) => { c.s = clean(c.s); });
+  }
+  return lines.sort((a, b) => a.page - b.page || b.y - a.y);
+}
+
+export function linesToTable(lines) {
+  const isItem = (l) => l.cells.some((c) => ILP_IN.test(c.s.toUpperCase()));
+  const first = lines.findIndex(isItem);
+  if (first < 0) return { rows: lines.map((l) => l.cells.map((c) => docNum(c.s))), text: lines.map((l) => l.cells.map((c) => c.s).join(' ')).join('\n') };
+  const items = lines.filter(isItem);
+  const anchor = items.reduce((a, b) => (b.cells.length > a.cells.length ? b : a));
+  const cols = anchor.cells.map((c) => ({ x0: c.x0, x1: c.x1, c: (c.x0 + c.x1) / 2 }));
+  const pick = (cell) => {
+    let best = 0, bestScore = -Infinity;
+    const cc = (cell.x0 + cell.x1) / 2;
+    cols.forEach((col, i) => {
+      const overlap = Math.min(cell.x1, col.x1) - Math.max(cell.x0, col.x0);
+      const score = overlap > 0 ? overlap + 1000 : -Math.abs(cc - col.c);
+      if (score > bestScore) { bestScore = score; best = i; }
+    });
+    return best;
+  };
+  const toRow = (l) => {
+    const row = cols.map(() => '');
+    for (const c of l.cells) { const i = pick(c); row[i] = row[i] ? `${row[i]} ${c.s}` : c.s; }
+    return row;
+  };
+  // Header: the 1–6 lines just above the first item line, stacked per column. Take the depth that
+  // names the most columns, so a title or address above the table doesn't spoil the header.
+  const stack = (k) => {
+    const head = cols.map(() => '');
+    for (const l of lines.slice(Math.max(0, first - k), first)) toRow(l).forEach((s, i) => { if (s) head[i] = head[i] ? `${head[i]} ${s}` : s; });
+    return head;
+  };
+  let head = cols.map(() => ''), best = -1;
+  for (let k = 1; k <= Math.min(6, first); k++) {
+    const h = stack(k), n = Object.keys(plColumns(h)).length;
+    if (n > best) { best = n; head = h; }
+  }
+  const rows = [head, ...lines.slice(first).map((l) => toRow(l).map(docNum))];
+  return { rows, text: lines.map((l) => l.cells.map((c) => c.s).join(' ')).join('\n') };
+}
+
+// Purchase order number anywhere on the document (e.g. POVNP-2600001, PONL-2600001, PO #1234567890).
+export function docPO(text) {
+  const m = String(text).toUpperCase().match(/\bPO[A-Z]{0,5}-\d{5,}\b/) || String(text).toUpperCase().match(/\bPO\s*(?:NO\.?|#|:)?\s*([A-Z0-9-]{5,})/);
+  return m ? (m[1] || m[0]) : '';
 }

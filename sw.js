@@ -2,7 +2,7 @@
 // Strategy: serve from cache immediately, refresh the cache in the background.
 // Bump VERSION whenever files are published so every device picks up the new version.
 
-const VERSION = 'ilp-carton-v1.4.0';
+const VERSION = 'ilp-carton-v1.5.0';
 
 const CORE = [
   './', 'index.html', 'manifest.webmanifest',
@@ -11,9 +11,9 @@ const CORE = [
   'assets/fonts/Montserrat-normal-latin.woff2', 'assets/fonts/Montserrat-normal-latin-ext.woff2', 'assets/fonts/Montserrat-normal-vietnamese.woff2',
   'assets/fonts/SourceSerif4-normal-latin.woff2', 'assets/fonts/SourceSerif4-normal-latin-ext.woff2', 'assets/fonts/SourceSerif4-normal-vietnamese.woff2',
   'vendor/preact-htm.js', 'vendor/qrcode-generator.js', 'vendor/qr-scanner.min.js', 'vendor/qr-scanner-worker.min.js',
-  'vendor/firebase-app.js', 'vendor/firebase-firestore.js', 'vendor/firebase-auth.js', 'vendor/xlsx.full.min.js',
+  'vendor/firebase-app.js', 'vendor/firebase-firestore.js', 'vendor/firebase-auth.js', 'vendor/xlsx.full.min.js', 'vendor/pdf.min.mjs', 'vendor/pdf.worker.min.mjs',
   'src/main.js', 'src/config.js', 'src/util.js', 'src/i18n.js', 'src/qr.js', 'src/model.js', 'src/store.js',
-  'src/components.js', 'src/print.js', 'src/excel.js', 'src/sample.js', 'src/db/local.js', 'src/db/firebase.js',
+  'src/components.js', 'src/print.js', 'src/excel.js', 'src/pdf.js', 'src/sample.js', 'src/db/local.js', 'src/db/firebase.js',
   'src/views/home.js', 'src/views/scan.js', 'src/views/scanner.js', 'src/views/carton.js', 'src/views/records.js',
   'src/views/record-view.js', 'src/views/record-form.js', 'src/views/items.js', 'src/views/settings.js', 'src/views/login.js', 'src/views/stock.js',
 ];

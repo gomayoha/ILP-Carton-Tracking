@@ -15,7 +15,7 @@
 <p>Open this page from the local server (e.g. http://127.0.0.1:8765/tests/run.html). Every line should be green.</p>
 <div id="out"></div>
 <script type="module">
-  import { split, notation, packingRows, totals, movementBlocks, recordCartons, fmtWO, validate, handNotation, perCartonNotation, receiptState, hasReceipt, scanGroups, packingListLines, cartonPallet, excelDate, pickFromLines, pickProgress, currentStock, stockByLocation, rackOf, locLabel, cartonLedger, stockDataRows, STOCK_DATA_HEADER } from '../src/model.js';
+  import { split, notation, packingRows, totals, movementBlocks, recordCartons, fmtWO, validate, handNotation, perCartonNotation, receiptState, hasReceipt, scanGroups, packingListLines, cartonPallet, excelDate, pickFromLines, pickProgress, currentStock, stockByLocation, rackOf, locLabel, cartonLedger, stockDataRows, STOCK_DATA_HEADER, textToLines, linesToTable, docNum, parseDims, docPO } from '../src/model.js';
   import { incrementDocNo, norm } from '../src/util.js';
   import { parseScan, cartonPayload, locationPayload } from '../src/qr.js';
   import { DEFAULT_SETTINGS } from '../src/store.js';
@@ -188,6 +188,30 @@
   eq('stock data row for a shipped carton', [shippedRow[0], shippedRow[2], shippedRow[6], shippedRow[7], shippedRow[13], shippedRow[15], shippedRow[16], shippedRow[17], shippedRow[19], shippedRow[20]],
     ['Entity A', 'ILPTST00000010', 'A. 1. 2', 250, 0.014, 'PO-9', 'SUP01', 'Supplier One', 'INV-1', 'Customer X']);
   eq('stock data in stock only', stockDataRows(led, { wh: 'FR', inStockOnly: true }).length, 6);
+
+  // Reading supplier PDFs (text pieces as pdf.js gives them; made-up documents shaped like real VN delivery notes)
+  eq('document numbers', [docNum('1.000'), docNum('2,700.00'), docNum('4.5'), docNum('12'), docNum('Hộp')], [1000, 2700, 4.5, 12, 'Hộp']);
+  eq('carton size in mm becomes cm', [parseDims('600*400*360'), parseDims('40 x 24 x 21')], [{ l: 60, w: 40, h: 36 }, { l: 40, w: 24, h: 21 }]);
+  eq('PO found on the document', [docPO('PO: POVNP-2600011'), docPO('Số PO khách hàng: POVNP-2600012'), docPO('nothing here')], ['POVNP-2600011', 'POVNP-2600012', '']);
+  const T = (s, x, y, w) => ({ s, x, y, w, h: 9, page: 1 });
+  const pxk = linesToTable(textToLines([
+    T('PHIẾU XUẤT KHO', 200, 700, 150), T('Bên mua hàng: Công ty Test', 20, 660, 200),
+    T('STT', 20, 560, 20), T('Tên, nhãn hiệu, quy cách', 60, 560, 180), T('Quy Cách', 300, 560, 60), T('ĐVT', 420, 560, 25), T('Số lượng', 480, 560, 60),
+    T('phẩm chất vật tư', 80, 548, 120), T('Kế hoạch', 460, 548, 45), T('Thực xuất', 520, 548, 50),
+    T('PO: POVNP-2600001', 60, 530, 120),
+    T('1', 25, 515, 5), T('ILPTEST0000001', 60, 515, 90), T('600*400*360', 300, 515, 70), T('Hộp', 420, 515, 20), T('1.000', 530, 515, 30),
+    T('TỔNG', 60, 500, 40), T('1.000', 530, 500, 30)]));
+  const pxkLines = packingListLines(pxk.rows).lines;
+  eq('supplier delivery note (Phiếu xuất kho) is read from PDF text', pxkLines.map((l) => [l.code, l.qty, l.unit, l.l, l.w, l.h]), [['ILPTEST0000001', 1000, 'box', 60, 40, 36]]);
+  eq('PO read from the delivery note text', docPO(pxk.text), 'POVNP-2600001');
+  const bb = linesToTable(textToLines([
+    T('BIÊN BẢN GIAO HÀNG', 200, 700, 200),
+    T('STT', 20, 560, 20), T('Mã vật tư', 60, 560, 70), T('Tên vật tư', 180, 560, 70), T('ĐVT', 300, 560, 25), T('Số lượng', 350, 560, 50), T('Đơn giá', 420, 560, 50),
+    T('1', 25, 540, 5), T('ILPTEST0000002', 60, 540, 100), T('Kéo cắt', 180, 540, 60), T('Cái', 300, 540, 20), T('2', 370, 540, 5), T('0', 440, 540, 5),
+    T('2', 25, 525, 5), T('ILPTEST0000003', 60, 525, 100), T('Keo 502', 180, 525, 60), T('Lọ', 300, 525, 20), T('100', 365, 525, 18), T('0', 440, 525, 5),
+    T('3', 25, 510, 5), T('ILPTEST0000004', 60, 510, 100), T('Màng PE', 180, 510, 60), T('Cuộn', 300, 510, 25), T('5', 370, 510, 5), T('0', 440, 510, 5)]));
+  eq('delivery record (Biên bản giao hàng) is read from PDF text', packingListLines(bb.rows).lines.map((l) => [l.code, l.desc, l.qty, l.unit]),
+    [['ILPTEST0000002', 'Kéo cắt', 2, 'piece'], ['ILPTEST0000003', 'Keo 502', 100, 'piece'], ['ILPTEST0000004', 'Màng PE', 5, 'roll']]);
 
   out.insertAdjacentHTML('afterbegin', `<h2 class="${failed ? 'fail' : 'pass'}">${failed ? `${failed} failed, ${passed} passed` : `All ${passed} tests passed`}</h2>`);
   document.title = failed ? `✗ ${failed} failed` : `✓ ${passed} passed`;

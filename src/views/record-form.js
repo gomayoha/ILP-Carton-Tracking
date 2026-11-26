@@ -177,14 +177,27 @@ function ImportPackingList({ rec, setRec }) {
     const file = e.target.files && e.target.files[0];
     e.target.value = '';
     if (!file) return;
-    if (/\.pdf$/i.test(file.name)) {
-      setResult({ bad: true, warnings: [tr('A PDF cannot be read. Please ask the supplier for the packing list in Excel (.xlsx), or type the lines below.', 'Không đọc được file PDF. Hãy xin nhà cung cấp packing list dạng Excel (.xlsx), hoặc nhập các dòng bên dưới.')] });
+    if (/\.(jpe?g|png|heic|webp)$/i.test(file.name)) {
+      setResult({ bad: true, warnings: [tr('Photos cannot be read yet. Please use the supplier\'s PDF, or enter the lines below.', 'Chưa đọc được ảnh chụp. Hãy dùng file PDF của nhà cung cấp, hoặc nhập các dòng bên dưới.')] });
       return;
     }
     setBusy(true);
     try {
       const keep = rec.lines.filter((l) => clean(l.code) || num(l.qty) > 0);
       const res = await parsePackingListFile(file, { firstLn: rec.nextLn });
+      // Delivery notes rarely say pcs per carton, weights or carton size: take them from the item list.
+      let fromList = 0;
+      res.lines = res.lines.map((l) => {
+        const it = state.items.get(l.code);
+        if (!it) return l;
+        const out = { ...l, ref: l.ref || it.ref || '', desc: l.desc || it.desc || '' };
+        if (!num(out.ppc) && num(it.ppc) > 0) { out.ppc = num(it.ppc); fromList++; }
+        for (const k of ['nw', 'gw', 'l', 'w', 'h']) if (!num(out[k]) && num(it[k]) > 0) out[k] = num(it[k]);
+        return out;
+      });
+      const noPpc = res.lines.filter((l) => !num(l.ppc)).map((l) => l.code);
+      if (fromList) res.warnings.push(tr(`Pcs per carton taken from the item list for ${fromList} line(s) — please check.`, `SL/thùng lấy từ danh mục mã hàng cho ${fromList} dòng — vui lòng kiểm tra.`));
+      if (noPpc.length) res.warnings.push(tr(`No pcs per carton for ${noPpc.join(', ')}: enter it below to print carton stickers.`, `Chưa có SL/thùng cho ${noPpc.join(', ')}: nhập bên dưới để in nhãn thùng.`));
       if (res.lines.length) {
         setRec((r) => ({ ...r, lines: [...keep, ...res.lines], nextLn: r.nextLn + res.lines.length,
           supplier: r.supplier || res.supplier || '', date: res.date || r.date,
@@ -198,13 +211,13 @@ function ImportPackingList({ rec, setRec }) {
     setBusy(false);
   };
   return html`<div class="card import-pl">
-    <div class="block-title"><h3>${tr('Supplier packing list', 'Packing list của nhà cung cấp')}</h3></div>
-    <p class="muted small">${tr('Upload the supplier\'s packing list in Excel. Each row becomes a line; the cartons and their QR labels are created from it. Check the lines below before saving.', 'Tải lên packing list Excel của nhà cung cấp. Mỗi dòng thành một mã hàng; các thùng và nhãn QR được tạo từ đó. Kiểm tra các dòng bên dưới trước khi lưu.')}</p>
-    <label class=${'btn primary' + (busy ? ' disabled' : '')}><${Icon} name="upload" /><span>${busy ? tr('Reading…', 'Đang đọc…') : tr('Upload packing list (.xlsx)', 'Tải packing list (.xlsx)')}</span>
-      <input type="file" accept=".xlsx,.xls,.csv,.pdf" hidden onChange=${onFile} disabled=${busy} /></label>
+    <div class="block-title"><h3>${tr('Supplier document', 'Chứng từ nhà cung cấp')}</h3></div>
+    <p class="muted small">${tr('Upload the supplier\'s packing list or delivery note (PDF or Excel). The system reads the item codes, quantities and PO; pcs per carton come from the item list. Check the lines below before printing.', 'Tải packing list hoặc phiếu giao hàng của nhà cung cấp (PDF hoặc Excel). Hệ thống đọc mã hàng, số lượng và PO; SL/thùng lấy từ danh mục mã hàng. Kiểm tra các dòng bên dưới trước khi in.')}</p>
+    <label class=${'btn primary' + (busy ? ' disabled' : '')}><${Icon} name="upload" /><span>${busy ? tr('Reading…', 'Đang đọc…') : tr('Upload packing list / delivery note (PDF or Excel)', 'Tải packing list / phiếu giao hàng (PDF hoặc Excel)')}</span>
+      <input type="file" accept=".pdf,.xlsx,.xls,.csv,application/pdf" hidden onChange=${onFile} disabled=${busy} /></label>
     <button class="link small tpl-link" onClick=${downloadStockInTemplate}>${tr('Download the blank stock-in template (same file for every warehouse)', 'Tải mẫu nhập kho trống (cùng một file cho mọi kho)')}</button>
     ${result && html`<div class=${'banner ' + (result.bad ? 'bad' : result.warnings.length ? 'warn' : 'info')}><${Icon} name=${result.bad ? 'alert' : 'check'} /><div>
-      ${!result.bad && html`<b>${result.file}</b>: ${tr(`${result.lines} lines · ${fmtNum(result.qty)} pcs · ${result.cartons} cartons (labels) added.`, `đã thêm ${result.lines} dòng · ${fmtNum(result.qty)} sp · ${result.cartons} thùng (nhãn).`)}`}
+      ${!result.bad && html`<b>${result.file}</b>: ${tr(`${result.lines} ${result.lines === 1 ? 'line' : 'lines'} read · total quantity ${fmtNum(result.qty)} · ${result.cartons} carton stickers.`, `đã đọc ${result.lines} dòng · tổng số lượng ${fmtNum(result.qty)} · ${result.cartons} nhãn thùng.`)}`}
       ${result.warnings.length > 0 && html`<ul>${result.warnings.map((w) => html`<li>${w}</li>`)}</ul>`}</div></div>`}
   </div>`;
 }
@@ -218,7 +231,6 @@ function PickList({ rec, setRec }) {
     const file = e.target.files && e.target.files[0];
     e.target.value = '';
     if (!file) return;
-    if (/\.pdf$/i.test(file.name)) { setMsg({ bad: true, text: tr('A PDF cannot be read. Please use the Excel packing list.', 'Không đọc được file PDF. Hãy dùng packing list Excel.') }); return; }
     setBusy(true);
     try {
       const res = await parsePackingListFile(file);
@@ -247,7 +259,7 @@ function PickList({ rec, setRec }) {
     </table></div>
     ${pp.complete && html`<p class="pick-ok"><${Icon} name="check" /> ${tr('Everything on the pick list is scanned.', 'Đã quét đủ toàn bộ danh sách lấy hàng.')}</p>`}`}
     <div class="pick-actions">
-      <label class=${'btn secondary small' + (busy ? ' disabled' : '')}><${Icon} name="upload" /><span>${busy ? tr('Reading…', 'Đang đọc…') : (rec.pick || []).length ? tr('Replace pick list', 'Thay danh sách') : tr('Upload delivery packing list (.xlsx)', 'Tải packing list giao hàng (.xlsx)')}</span>
+      <label class=${'btn secondary small' + (busy ? ' disabled' : '')}><${Icon} name="upload" /><span>${busy ? tr('Reading…', 'Đang đọc…') : (rec.pick || []).length ? tr('Replace pick list', 'Thay danh sách') : tr('Upload delivery packing list (PDF or Excel)', 'Tải packing list giao hàng (PDF hoặc Excel)')}</span>
         <input type="file" accept=".xlsx,.xls,.csv,.pdf" hidden onChange=${onFile} disabled=${busy} /></label>
       ${(rec.pick || []).length > 0 && html`<button class="link small" onClick=${() => { setRec((r) => ({ ...r, pick: [], pickFile: '' })); setMsg(null); }}>${tr('Remove pick list', 'Bỏ danh sách')}</button>`}
     </div>

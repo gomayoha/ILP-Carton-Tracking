@@ -1,7 +1,8 @@
 // Excel in and out. SheetJS (≈1 MB) is only loaded when one of these functions is used.
 
+import { tr } from './i18n.js';
 import { loadScript, norm, clean, num, today, fmtDate, toCSV, downloadFile } from './util.js';
-import { packingRows, totals, movementBlocks, LAYOUTS, recordCartons, split, fmtWO, warehouse, scanGroups, packingListLines, rackOf, locLabel, STOCK_IN_HEADER, STOCK_DATA_HEADER } from './model.js';
+import { packingRows, totals, movementBlocks, LAYOUTS, recordCartons, split, fmtWO, warehouse, scanGroups, packingListLines, rackOf, locLabel, STOCK_IN_HEADER, STOCK_DATA_HEADER, docPO } from './model.js';
 import { itemToRow, rowToItem } from './store.js';
 
 async function XLSX() {
@@ -112,6 +113,15 @@ export async function parseItemFiles(files, existingRows = []) {
 // Takes the sheet with the most item rows. Returns { lines, warnings, sheet }.
 
 export async function parsePackingListFile(file, opts) {
+  if (/\.pdf$/i.test(file.name) || file.type === 'application/pdf') {
+    const { pdfTable } = await import('./pdf.js');
+    const t = await pdfTable(file);
+    if (!t.hasText) return { lines: [], warnings: [tr('This PDF is a scanned picture (no text inside), so it cannot be read yet. Please use the supplier\'s original PDF, or enter the lines by hand.', 'PDF này là ảnh scan (không có chữ bên trong), nên chưa đọc được. Hãy dùng file PDF gốc của nhà cung cấp, hoặc nhập tay các dòng.')], sheet: 'PDF' };
+    const res = packingListLines(t.rows, opts);
+    const po = docPO(t.text);
+    if (po) for (const l of res.lines) if (!l.po) l.po = po;
+    return { ...res, po, sheet: 'PDF' };
+  }
   const X = await XLSX();
   const wb = X.read(await file.arrayBuffer(), { type: 'array', dense: true });
   let best = null;
