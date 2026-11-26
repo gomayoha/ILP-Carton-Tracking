@@ -2,7 +2,7 @@
 
 import { tr } from './i18n.js';
 import { loadScript, norm, clean, num, today, fmtDate, toCSV, downloadFile } from './util.js';
-import { packingRows, totals, movementBlocks, LAYOUTS, recordCartons, split, fmtWO, warehouse, scanGroups, packingListLines, rackOf, locLabel, STOCK_IN_HEADER, STOCK_DATA_HEADER, docPO } from './model.js';
+import { packingRows, totals, movementBlocks, LAYOUTS, recordCartons, split, fmtWO, warehouse, scanGroups, packingListLines, rackOf, locLabel, STOCK_IN_HEADER, STOCK_DATA_HEADER, docPO, docSupplier, docNumber, qrInRows } from './model.js';
 import { itemToRow, rowToItem } from './store.js';
 
 async function XLSX() {
@@ -120,7 +120,7 @@ export async function parsePackingListFile(file, opts) {
     const res = packingListLines(t.rows, opts);
     const po = docPO(t.text);
     if (po) for (const l of res.lines) if (!l.po) l.po = po;
-    return { ...res, po, sheet: 'PDF' };
+    return { ...res, po, supplier: res.supplier || docSupplier(t.text), docNo: docNumber(t.text), sheet: 'PDF' };
   }
   const X = await XLSX();
   const wb = X.read(await file.arrayBuffer(), { type: 'array', dense: true });
@@ -233,6 +233,16 @@ export async function downloadStockData(rows, label) {
   const wb = X.utils.book_new();
   X.utils.book_append_sheet(wb, ws, 'Stock data');
   X.writeFile(wb, `Stock data ${label || ''} ${today()}.xlsx`.replace(/[\\/:*?"<>|]/g, '-').replace(/\s+/g, ' '));
+}
+
+// The list just received, in the "QR in" layout.
+export async function downloadQrIn(rec, whName) {
+  const X = await XLSX();
+  const ws = sheetFrom(X, [['Stock -in'], [], STOCK_IN_HEADER, ...qrInRows(rec, { whName })], [24, 18, 17, 26, 8, 9, 9, 9, 9, 9, 9, 9, 9, 12, 16, 14, 18, 12, 8], [13]);
+  ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: STOCK_IN_HEADER.length - 1 } }];
+  const wb = X.utils.book_new();
+  X.utils.book_append_sheet(wb, ws, 'QR in');
+  X.writeFile(wb, `QR in ${rec.docNo || rec.id} ${rec.date || ''}.xlsx`.replace(/[\\/:*?"<>|]/g, '-').replace(/\s+/g, ' '));
 }
 
 export async function downloadStockInTemplate() {

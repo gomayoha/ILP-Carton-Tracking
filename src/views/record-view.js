@@ -9,7 +9,7 @@ import { fmtDate, fmtDateTime, fmtNum, fmtDec, num, toTSV, copyText, go } from '
 import { printLabels, printSlip, printPackingList, labelHTML } from '../print.js';
 import { parseScan } from '../qr.js';
 import { Scanner, feedback } from './scanner.js';
-import { downloadPackingList, downloadStockRows, downloadLabelList } from '../excel.js';
+import { downloadQrIn, downloadPackingList, downloadStockRows, downloadLabelList } from '../excel.js';
 
 function LabelPreview({ rec, carton, device }) {
   return html`<div class="label-preview" dangerouslySetInnerHTML=${{ __html: labelHTML(carton, rec, device.labelPreset, { qrMode: device.qrMode, showLogo: device.showLogo }) }}></div>`;
@@ -121,6 +121,7 @@ export function RecordView({ id }) {
       ${cartons.length > 0 && html`<${Btn} kind="primary" icon="printer" onClick=${() => doPrintLabels(cartons)} disabled=${voided}>${tr('Print all labels', 'In tất cả nhãn')} (${cartons.length})</${Btn}>`}
       ${!isPut && html`<${Btn} icon="file" onClick=${doPrintDoc}>${isShip ? tr('Print packing list', 'In packing list') : tr('Print slip', 'In phiếu')}</${Btn}>`}
       ${isShip && html`<${Btn} icon="download" onClick=${() => downloadPackingList(rec)}>${tr('Packing list .xlsx', 'Packing list .xlsx')}</${Btn}>`}
+      ${(isIn || rec.type === 'handoff') && html`<${Btn} icon="download" onClick=${() => downloadQrIn(rec, (warehouse(s.settings, rec.toWh) || {}).name)}>${tr('Received list (QR in) .xlsx', 'Danh sách nhận (QR in) .xlsx')}</${Btn}>`}
       ${!isPut && html`<${Btn} icon="copy" onClick=${copyStock} disabled=${voided}>${tr('Copy rows for stock report', 'Sao chép dòng cho stock report')}</${Btn}>
       <${Btn} icon="download" onClick=${() => downloadStockRows([rec], s.settings, rec.docNo)} disabled=${voided}>${tr('Stock rows .xlsx', 'Dòng stock .xlsx')}</${Btn}>`}
       <span class="toolbar-gap"></span>

@@ -52,6 +52,12 @@ Read this before changing anything.
 5. Company IT rules on external cloud services (Firebase = Google Cloud).
 6. Was the v1 Google Sheet backend ever used? (Only matters if old data needs importing.)
 
+## Ms Ly's process sheet (26 Nov 2026, "QR project detail data (1).xlsx")
+- **Inbound:** every location has its own QR. Goods arrive with a packing list / delivery note. **Overseas suppliers: PDF before the goods arrive. Local suppliers: paper delivery note with the goods (no PDF) → both PDF and photo are needed.** The system defines item code, description, packing spec, receiving date, supplier name, PO / invoice no., number of stickers. Paste a sticker on each carton; put away = scan the location QR, then the carton QRs. Export the list just received in the "QR in" layout (Record → "Received list (QR in) .xlsx").
+- Her questions, all yes: count cartons per location (Stock page); scanning twice records once; a damaged sticker is reprinted with the same QR.
+- **Outbound:** the shipping request comes from the merchandiser ("Mer") as Excel: PO REF. (IDE… order/invoice no.), COMPONENT CODE (customer code), INTERNAL REF. (ILP code), Balance (qty), ETD, Place ship (customer). Upload it as the shipment's pick list → shows qty to pick, **stock on hand** and **locations, oldest stock first (FIFO)** (`pickSuggest`). After picking, scan all cartons → packing list.
+- **Warehouses:** Idea L Pack B.V (France: phones, stickers 105 × 74 mm; goods come from a supplier, Pack CN and Print), Idea L Pack CN / EX / HK (one responsible person), IDEA L PACK MENA FZ LLC (UAE, run by an outside logistics company). Contact names are kept in Claude's private memory, not in this public repo. **Working language everywhere: English** (no Chinese / French screens needed).
+
 ## Boss's scope (MD email, 23 Nov 2026)
 All warehouses of the group: China, Vietnam, France, UAE. Every operator scans the carton QR for each transaction: inbound, storage, pick up, outbound. Ms Ly (warehouse manager) defines the process; Yohan builds the tool. Review on Tue 1 Dec 2026. Built: inbound (production handoff + supplier receipt), transfer, outbound (shipment). Not built yet: storage locations, pick up. Ms Ly (25 Nov 2026): go live in **France, Vietnam and China**; UAE uses the same system later — today an outside logistics company runs the UAE warehouse. Risks: Google/Firebase blocked in mainland China, Spark quota, Chinese/French UI.
 
@@ -62,6 +68,7 @@ Done
 - [x] Storage: "Put away" record (type `putaway`: warehouse + location + scanned cartons; "Save & next shelf"); shelf QR labels `ILP-LOC:A.1.2` printed from the Stock page (ranges like A.1.1-A.9.6); Stock page = current stock by location (`currentStock`, `stockByLocation`), Excel export in the France report layout (one sheet per rack, French headers + internal code / description / total). Locations are stored without spaces (A.1.2) and shown "A. 1. 2" in the Excel (25 Nov 2026)
 - [x] One standard for all warehouses (Ms Ly, 25 Nov 2026: "make 1 for all, not each warehouse 1 system; input the same file, export the same file, same format"): input = her "QR in" stock-in sheet (blank template downloadable from the Supplier receipt form and the Stock page); export = her "Stock data" sheet, one row per carton, Barcode number = carton ID (`cartonLedger`, `stockDataRows`, `STOCK_DATA_HEADER`, her spelling kept). Sticker content is the same everywhere; only the size differs per device: VN 100 × 55 mm barcode roll, France A4 sheet 8 per page 105 × 74 mm (preset `a4-8`, France's current stickers are IDEA L PACK layout: Reference No., Quantity (Pcs), Gross Weight, Dimension, Shipping Date, PO No.)
 - [x] Read the supplier's PDF directly (Ms Ly, 26 Nov 2026: no retyping into Excel). `src/pdf.js` + vendored pdf.js 4.10.38 (`vendor/pdf.min.mjs`, `pdf.worker.min.mjs`, Apache-2.0) → `textToLines` / `linesToTable` (columns from the widest item row, header = best 1–6 lines above it) → `packingListLines`. Understands Vietnamese delivery notes (Phiếu xuất kho: code in the name column, "Thực xuất", "1.000" = 1000, Quy cách 600*400*360 mm → cm, ĐVT Hộp/Cái/Lọ/Cuộn; Biên bản giao hàng: Mã vật tư / Số lượng) and the supplier packing-list layout; PO from the document text (`docPO`). Pcs per carton / weights / size filled from the item list when the document lacks them, with a "please check" note. Tested: the real France PDF (12 lines, 781 cartons, all totals match) and a sample Phiếu xuất kho. Scanned PDFs and phone photos are not read yet (message says so).
+- [x] Ms Ly's process sheet, 26 Nov 2026: supplier name + document no. read from the PDF (`docSupplier`, `docNumber`); merchandiser's shipping Excel accepted as pick list (PO REF / COMPONENT CODE / INTERNAL REF / Balance / Place ship → customer filled in); pick list shows stock on hand + FIFO locations; "Received list (QR in) .xlsx" export per receipt (`qrInRows`)
 - [x] Pick up: on a shipment, upload the delivery packing list as a pick list (`rec.pick`, `pickProgress`); scanning warns on items not on the list / too many; the shipment page shows short / complete (25 Nov 2026)
 
 Waiting on Yohan
@@ -75,13 +82,13 @@ Waiting on Ms Ly
 - [ ] Info per warehouse (China, France, UAE): contact, inbound docs, locations, pick up, outbound, volume, equipment, stock report, language
 
 To build (in order)
-- [ ] Phone photos / scanned PDFs of supplier papers: needs OCR — free in-browser OCR is weak on photos; AI reading works but needs a small server, a little cost and IT approval. Ask Ms Ly how often they get paper only (no PDF).
+- [ ] **Phone photos of paper delivery notes** — NEEDED (local suppliers send paper only, Ms Ly 26 Nov 2026). Free option: Tesseract.js in the browser (word boxes → same `textToLines`/`linesToTable` pipeline; ~2–10 MB download, weaker on bent paper); better option: AI reading (small server, small cost, IT approval). Always show the result for checking.
 - [ ] Raw materials (after Ms Ly's answer)
 - [ ] Warn before saving a record with ~3,000+ scanned cartons (Firestore 1 MB per document ≈ 4,000 scans); suggest splitting
 - [ ] China access: Google/Firebase is blocked in mainland China — find a solution (e.g. a China-reachable host/proxy or a separate backend) before China goes live; put it on the 1 Dec review as a risk with a date
 - [ ] Set a Firebase budget alert (~$5) if the project ever moves to the pay-as-you-go plan. Storage answer for the review (25 Nov 2026): free Spark plan is enough (1 save per record, not per carton; ~100–300 MB/year)
 - [ ] Review pack for Tue 1 Dec 2026: what is built, gaps, risks (China network, quota, IT approval, languages), go-live date per country
-- [ ] Later: Chinese / French screens, pallet QR (scan one pallet = all its cartons), stock balance per location
+- [ ] Later: pallet QR (scan one pallet = all its cartons). (Chinese / French screens not needed — Ms Ly: English everywhere.)
 
 ## Later (designed for, not built)
 In/Out/Rejected stock balances, warehouse locations (vị trí), QC hold/release (GR numbers), confirmation stages, per-person accounts, archiving records older than N months from the in-memory list.

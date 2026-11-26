@@ -15,7 +15,7 @@
 <p>Open this page from the local server (e.g. http://127.0.0.1:8765/tests/run.html). Every line should be green.</p>
 <div id="out"></div>
 <script type="module">
-  import { split, notation, packingRows, totals, movementBlocks, recordCartons, fmtWO, validate, handNotation, perCartonNotation, receiptState, hasReceipt, scanGroups, packingListLines, cartonPallet, excelDate, pickFromLines, pickProgress, currentStock, stockByLocation, rackOf, locLabel, cartonLedger, stockDataRows, STOCK_DATA_HEADER, textToLines, linesToTable, docNum, parseDims, docPO } from '../src/model.js';
+  import { split, notation, packingRows, totals, movementBlocks, recordCartons, fmtWO, validate, handNotation, perCartonNotation, receiptState, hasReceipt, scanGroups, packingListLines, cartonPallet, excelDate, pickFromLines, pickProgress, currentStock, stockByLocation, rackOf, locLabel, cartonLedger, stockDataRows, STOCK_DATA_HEADER, textToLines, linesToTable, docNum, parseDims, docPO, pickSuggest, docSupplier, docNumber, qrInRows, STOCK_IN_HEADER } from '../src/model.js';
   import { incrementDocNo, norm } from '../src/util.js';
   import { parseScan, cartonPayload, locationPayload } from '../src/qr.js';
   import { DEFAULT_SETTINGS } from '../src/store.js';
@@ -212,6 +212,22 @@
     T('3', 25, 510, 5), T('ILPTEST0000004', 60, 510, 100), T('Màng PE', 180, 510, 60), T('Cuộn', 300, 510, 25), T('5', 370, 510, 5), T('0', 440, 510, 5)]));
   eq('delivery record (Biên bản giao hàng) is read from PDF text', packingListLines(bb.rows).lines.map((l) => [l.code, l.desc, l.qty, l.unit]),
     [['ILPTEST0000002', 'Kéo cắt', 2, 'piece'], ['ILPTEST0000003', 'Keo 502', 100, 'piece'], ['ILPTEST0000004', 'Màng PE', 5, 'roll']]);
+
+  // Ms Ly's process sheet (26 Nov 2026)
+  const mer = packingListLines([['Information to ship by excel'], ['PO REF.', 'COMPONENT CODE', 'INTERNAL REF.', 'Balance', 'ETD', 'Place ship'], ['IDE0000001', 'CUST-55', 'ILPTST00000055', 2615, 46351, 'Customer Y']]);
+  eq('shipping request Excel (PO REF / COMPONENT CODE / INTERNAL REF / Balance / Place ship) becomes a pick list', mer.lines.map((l) => [l.code, l.ref, l.qty, l.po, l.customer]), [['ILPTST00000055', 'CUST-55', 2615, 'IDE0000001', 'Customer Y']]);
+  const fifo = [
+    { cid: 'a', code: 'X', qty: 100, wh: 'FR', loc: 'B.1.1', inDate: '2026-11-10' }, { cid: 'b', code: 'X', qty: 100, wh: 'FR', loc: 'B.1.1', inDate: '2026-11-10' },
+    { cid: 'c', code: 'X', qty: 100, wh: 'FR', loc: 'A.2.1', inDate: '2026-10-01' }, { cid: 'd', code: 'X', qty: 100, wh: 'FR', loc: 'C.1.1', inDate: '2026-11-20' },
+    { cid: 'e', code: 'X', qty: 100, wh: 'VN', loc: 'A01', inDate: '2026-09-01' }];
+  const sg = pickSuggest(fifo, 'FR', 'X', 250);
+  eq('pick suggestion: stock on hand and oldest locations first', [sg.onHand, sg.enough, sg.from.map((g) => [g.loc, g.cartons])], [400, true, [['A.2.1', 1], ['B.1.1', 2]]]);
+  eq('pick suggestion: not enough stock', pickSuggest(fifo, 'FR', 'X', 500).enough, false);
+  eq('supplier name read from the document', [docSupplier('CÔNG TY TNHH NHÀ CUNG CẤP MẪU\nĐịa chỉ: KCN'), docSupplier('BIÊN BẢN GIAO HÀNG\nĐơn vị bán hàng: CÔNG TY TNHH MẪU HAI\nTên đơn vị mua hàng: CÔNG TY TNHH IDEA L PRINT'), docSupplier('IDEA L PACK B.V\nPACKING LIST')],
+    ['CÔNG TY TNHH NHÀ CUNG CẤP MẪU', 'CÔNG TY TNHH MẪU HAI', '']);
+  eq('document number read from the document', [docNumber('Ngày 21 · Số: PX0001/11'), docNumber('Packing List No. F20B11-PO'), docNumber('Số lượng 100')], ['PX0001/11', 'F20B11-PO', '']);
+  const qin = qrInRows({ type: 'inbound', date: '2026-11-26', supplier: 'Supplier One', toWh: 'FR', extRef: 'PO-1', lines: [{ code: 'ILPTST00000056', ref: 'R', desc: 'Box', unit: 'piece', qty: 1000, ppc: 250, location: 'A.1.2', l: 40, w: 25, h: 14 }] }, { whName: () => 'France' });
+  eq('received list in the QR in layout', [STOCK_IN_HEADER.length, qin[0].length, qin[0][0], qin[0][2], qin[0][5], qin[0][14], qin[0][16], qin[0][17], qin[0][18]], [19, 19, 'France', 'ILPTST00000056', 'A. 1. 2', 'PO-1', 'Supplier One', 1000, 4]);
 
   out.insertAdjacentHTML('afterbegin', `<h2 class="${failed ? 'fail' : 'pass'}">${failed ? `${failed} failed, ${passed} passed` : `All ${passed} tests passed`}</h2>`);
   document.title = failed ? `✗ ${failed} failed` : `✓ ${passed} passed`;

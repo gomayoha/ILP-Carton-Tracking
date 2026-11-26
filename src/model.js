@@ -403,20 +403,21 @@ export function validate(rec, { docNoTaken } = {}) {
 
 const key = (s) => norm(s).replace(/[^a-z0-9]/g, '');
 const PL_COLS = [
-  ['code', (k) => ['internalcode', 'interalcode', 'ilpcode', 'sku', 'itemcode', 'mahang', 'ideaitemno', 'ideaitem', 'ourref', 'mavattu', 'mavt', 'masanpham'].includes(k) || k.startsWith('internalcode')],
-  ['po', (k) => ['customerpo', 'po', 'pono', 'purchaseorder'].includes(k) || k.startsWith('customerpo') || k.startsWith('ponumber')],
-  ['ref', (k) => ['customerstyle', 'customercode', 'customerref', 'customeritemno', 'yourref', 'reference', 'referenceno', 'refno', 'makhachhang', 'makh'].some((x) => k.startsWith(x))],
+  ['code', (k) => ['internalcode', 'interalcode', 'ilpcode', 'sku', 'itemcode', 'mahang', 'ideaitemno', 'ideaitem', 'ourref', 'mavattu', 'mavt', 'masanpham', 'internalref'].includes(k) || k.startsWith('internalcode')],
+  ['po', (k) => ['customerpo', 'po', 'pono', 'purchaseorder', 'poref'].includes(k) || k.startsWith('customerpo') || k.startsWith('ponumber')],
+  ['ref', (k) => ['customerstyle', 'customercode', 'customerref', 'customeritemno', 'yourref', 'componentcode', 'reference', 'referenceno', 'refno', 'makhachhang', 'makh'].some((x) => k.startsWith(x))],
   ['desc', (k) => k.startsWith('description') || k.startsWith('tenhang') || k === 'productname' || k.startsWith('tenvattu') || k.startsWith('tennhanhieu') || k.startsWith('tensanpham')],
   ['uoms', (k) => k.startsWith('numberofuom') || ['cartons', 'ctns', 'noofcartons', 'numberofcartons', 'sothung', 'cartonqty'].includes(k)],
   ['ppc', (k) => k.startsWith('qtyuom') || k.startsWith('quantityuom') || ['pcscarton', 'pcsctn', 'qtycarton', 'qtyctn', 'pcsbox', 'qtybox'].includes(k)],
   ['qty', (k) => k.startsWith('orderqty') || ['qty', 'quantity', 'quantitypc', 'quantitypcs', 'shippedqty', 'totalqty', 'totalquantity', 'qtypcs', 'soluong',
-    'quantityreceive', 'quantityreceived', 'qtyreceive', 'qtyreceived', 'receivedqty'].includes(k) || k.includes('thucxuat') || k.includes('thucnhap') || k.endsWith('thucgiao')],
+    'quantityreceive', 'quantityreceived', 'qtyreceive', 'qtyreceived', 'receivedqty', 'balance', 'qtytoship', 'shipqty'].includes(k) || k.includes('thucxuat') || k.includes('thucnhap') || k.endsWith('thucgiao')],
   ['nw', (k) => (k.startsWith('netweight') || k.startsWith('nw')) && !k.includes('pallet')],
   ['gw', (k) => (k.startsWith('grossweight') || k.startsWith('gw')) && !k.includes('pallet')],
   ['l', (k) => !k.includes('pallet') && (k === 'l' || k.startsWith('l1carton') || ['lcm', 'length', 'lengthcm', 'lenght', 'lenghtcm'].includes(k))],
   ['w', (k) => !k.includes('pallet') && (k === 'w' || k.startsWith('w1carton') || ['wcm', 'width', 'widthcm'].includes(k))],
   ['h', (k) => !k.includes('pallet') && (k === 'h' || k.startsWith('h1carton') || ['hcm', 'height', 'heightcm'].includes(k))],
   ['dims', (k) => ['quycach', 'dimension', 'dimensions', 'kichthuoc', 'kichthuocthung', 'size', 'cartonsize'].includes(k) || k.startsWith('dimension')],
+  ['customer', (k) => ['placeship', 'shipto', 'customer', 'customername'].includes(k)],
   ['location', (k) => ['location', 'vitri', 'loc', 'binlocation'].includes(k)],
   ['entity', (k) => ['entities', 'entity', 'company'].includes(k)],
   ['supplierName', (k) => ['suppliername', 'supliername', 'supplier', 'nhacungcap'].includes(k)],
@@ -514,7 +515,7 @@ export function packingListLines(rows, { firstLn = 1 } = {}) {
       ln: ln++, code, ref: txt(get('ref')), desc: col.desc === col.code ? '' : txt(get('desc')), unit: unitCode(get('unit')), qty, ppc: ppc || '', reqQty: '', wo: '', po: txt(get('po')),
       nw: n('nw'), gw: n('gw'), pnw: '', pgw: '', l: n('l') || dm.l, w: n('w') || dm.w, h: n('h') || dm.h, printDate: '', packDate: '', fsc: '', bundle: '',
       pallet: txt(get('pallet')), perPallet: n('perPallet'), location: txt(get('location')).toUpperCase(), entity: txt(get('entity')),
-      supplierCode: txt(get('supplierCode')), supplierName: txt(get('supplierName')), stockInDate: excelDate(get('date')),
+      supplierCode: txt(get('supplierCode')), supplierName: txt(get('supplierName')), stockInDate: excelDate(get('date')), customer: txt(get('customer')),
     });
   }
   if (noQty) warnings.push(tr(`${noQty} rows have no quantity received — each was counted as 1 full carton. Please check.`, `${noQty} dòng chưa có số lượng nhận — mỗi dòng được tính là 1 thùng đủ. Vui lòng kiểm tra.`));
@@ -558,7 +559,7 @@ export function currentStock(records) {
   const now = new Map();
   for (const r of live) {
     if (r.type === 'shipment' || r.type === 'putaway') continue;
-    for (const c of recordCartons(r)) now.set(c.id, { cid: c.id, code: c.code, ref: c.ref || '', desc: c.desc || '', unit: c.unit, qty: c.qty, wh: r.toWh, loc: normLoc(c.location), date: r.date, recId: r.id });
+    for (const c of recordCartons(r)) now.set(c.id, { cid: c.id, code: c.code, ref: c.ref || '', desc: c.desc || '', unit: c.unit, qty: c.qty, wh: r.toWh, loc: normLoc(c.location), date: r.date, inDate: c.stockInDate || r.date, recId: r.id });
   }
   for (const r of live) {
     for (const s of r.scans || []) {
@@ -724,4 +725,60 @@ export function linesToTable(lines) {
 export function docPO(text) {
   const m = String(text).toUpperCase().match(/\bPO[A-Z]{0,5}-\d{5,}\b/) || String(text).toUpperCase().match(/\bPO\s*(?:NO\.?|#|:)?\s*([A-Z0-9-]{5,})/);
   return m ? (m[1] || m[0]) : '';
+}
+
+// ── Pick suggestion (FIFO) ──────────────────────────────────────────────────
+// For an item on the pick list: what is in stock in the warehouse, and which locations to pick from,
+// oldest stock first, until the asked quantity is covered.
+export function pickSuggest(stock, wh, code, need) {
+  const mine = stock.filter((c) => c.code === code && (!wh || c.wh === wh));
+  const onHand = round(mine.reduce((a, c) => a + num(c.qty), 0), 3);
+  const byLoc = new Map();
+  for (const c of mine) {
+    const k = c.loc || '';
+    const g = byLoc.get(k) || { loc: k, inDate: c.inDate || c.date || '', cartons: 0, qty: 0 };
+    if ((c.inDate || c.date || '') < g.inDate) g.inDate = c.inDate || c.date || '';
+    g.cartons += 1; g.qty = round(g.qty + num(c.qty), 3);
+    byLoc.set(k, g);
+  }
+  const ordered = [...byLoc.values()].sort((a, b) => a.inDate.localeCompare(b.inDate) || locCompare(a.loc, b.loc));
+  const take = [];
+  let left = num(need);
+  for (const g of ordered) { if (left <= 0) break; take.push(g); left = round(left - g.qty, 3); }
+  return { onHand, enough: onHand >= num(need), from: take };
+}
+
+// ── What the document says about itself ─────────────────────────────────────
+// Supplier ("Đơn vị bán hàng: CÔNG TY TNHH …", or the first company line that isn't ours)
+// and the document number ("Số: PX1096/11", "Packing List No. …", "Số DO: …").
+export function docSupplier(text) {
+  const lines = String(text).split('\n').map(clean).filter(Boolean);
+  for (const l of lines) {
+    const m = l.match(/(?:đơn vị bán hàng|người bán|nhà cung cấp|seller|supplier|shipper|vendor)\s*:\s*(.{3,80})/i);
+    if (m && !/idea\s*l/i.test(m[1])) return clean(m[1].replace(/\s*(địa chỉ|address|mst|tel)\b.*$/i, ''));
+  }
+  for (const l of lines.slice(0, 15)) {
+    if (/idea\s*l/i.test(l)) continue;
+    const m = l.match(/((?:công ty|cong ty|company)\b.{3,70}|.{3,60}\b(?:co\.,?\s*ltd|ltd\.?|limited|gmbh|s\.?a\.?s\.?|b\.v\.?))/i);
+    if (m) return clean(m[1].replace(/\s*(địa chỉ|address|mst|tel)\b.*$/i, ''));
+  }
+  return '';
+}
+
+export function docNumber(text) {
+  const t = String(text);
+  const m = t.match(/(?:packing\s*list\s*no|invoice\s*no|delivery\s*note\s*no|p\/?l\s*no)\.?\s*[:#]?\s*([A-Z0-9][\w/#.-]{2,30})/i)
+    || t.match(/\bSố(?:\s*phiếu)?\s*:\s*([A-Z0-9][\w/.-]{2,30})/i)
+    || t.match(/\bSố\s*DO(?:\s*\(DO\))?\s*:?\s*([A-Z0-9][\w/.-]{2,30})/i);
+  return m ? m[1].replace(/[.,;]+$/, '') : '';
+}
+
+// One receipt as Ms Ly's "QR in" sheet (the list just received): one row per line.
+export function qrInRows(rec, { whName = (c) => c } = {}) {
+  return (rec.lines || []).filter((l) => num(l.qty) > 0).map((l) => [
+    l.entity || whName(rec.toWh), l.ref || '', l.code, l.desc || '', UNIT_OUT[l.unit] || l.unit || 'pcs', locLabel(l.location || ''), num(l.ppc) || '',
+    num(l.l) || '', num(l.w) || '', num(l.h) || '', num(l.nw) || '', num(l.gw) || '',
+    num(l.l) && num(l.w) && num(l.h) ? round((num(l.l) * num(l.w) * num(l.h)) / 1e6, 6) : '',
+    l.stockInDate || rec.date || '', l.po || fmtWO(l.wo) || rec.extRef || '', l.supplierCode || '', l.supplierName || rec.supplier || (rec.type === 'handoff' ? 'production' : ''),
+    num(l.qty), split(l.qty, l.ppc).count || '']);
 }

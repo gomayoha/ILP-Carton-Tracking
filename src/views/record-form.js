@@ -4,7 +4,7 @@ import { html, useState, useEffect, useRef } from '../../vendor/preact-htm.js';
 import { tr } from '../i18n.js';
 import { useStore, getRecord, newRecord, saveRecord, docNoTaken, nextDocNo, findCarton, cartonLocation, toast, state } from '../store.js';
 import { Icon, Btn, Field, Input, NumInput, Select, ItemPicker, WhSelect, PageHead, Modal, Chip } from '../components.js';
-import { UNITS, FSC, perCartonNotation, handNotation, split, notation, totals, validate, typeName, scanGroups, unitLabel, recordCartons, pickFromLines, pickProgress } from '../model.js';
+import { UNITS, FSC, perCartonNotation, handNotation, split, notation, totals, validate, typeName, scanGroups, unitLabel, recordCartons, pickFromLines, pickProgress, pickSuggest, currentStock, locLabel } from '../model.js';
 import { num, round, fmtNum, fmtDec, newId, today, clean, go, normLoc } from '../util.js';
 import { parseScan } from '../qr.js';
 import { Scanner, feedback } from './scanner.js';
@@ -200,7 +200,7 @@ function ImportPackingList({ rec, setRec }) {
       if (noPpc.length) res.warnings.push(tr(`No pcs per carton for ${noPpc.join(', ')}: enter it below to print carton stickers.`, `Chưa có SL/thùng cho ${noPpc.join(', ')}: nhập bên dưới để in nhãn thùng.`));
       if (res.lines.length) {
         setRec((r) => ({ ...r, lines: [...keep, ...res.lines], nextLn: r.nextLn + res.lines.length,
-          supplier: r.supplier || res.supplier || '', date: res.date || r.date,
+          supplier: r.supplier || res.supplier || '', date: res.date || r.date, docNo: r.docNo || res.docNo || '',
           extRef: r.extRef || ([...new Set(res.lines.map((l) => l.po).filter(Boolean))].length === 1 ? res.lines[0].po : r.extRef) }));
       }
       const cartons = res.lines.reduce((a, l) => a + split(l.qty, l.ppc).count, 0);
@@ -239,23 +239,29 @@ function PickList({ rec, setRec }) {
         const pick = pickFromLines(res.lines);
         const scanPo = {};
         for (const p of pick) if (p.po) scanPo[p.code] = p.po;
-        setRec((r) => ({ ...r, pick, pickFile: file.name, scanPo: { ...scanPo, ...(r.scanPo || {}) } }));
-        setMsg({ text: tr(`${file.name}: ${pick.length} ${pick.length === 1 ? 'item' : 'items'} · ${pick.reduce((a, p) => a + p.cartons, 0)} cartons to pick.`, `${file.name}: ${pick.length} mã hàng · ${pick.reduce((a, p) => a + p.cartons, 0)} thùng cần lấy.`), warn: res.warnings.join(' ') });
+        const customers = [...new Set(res.lines.map((l) => l.customer).filter(Boolean))];
+        setRec((r) => ({ ...r, pick, pickFile: file.name, scanPo: { ...scanPo, ...(r.scanPo || {}) }, customer: r.customer || (customers.length === 1 ? customers[0] : '') }));
+        const ctn = pick.reduce((a, p) => a + p.cartons, 0), q = pick.reduce((a, p) => a + p.qty, 0);
+        setMsg({ text: tr(`${file.name}: ${pick.length} ${pick.length === 1 ? 'item' : 'items'} · ${ctn ? `${ctn} cartons` : `quantity ${fmtNum(q)}`} to pick.`, `${file.name}: ${pick.length} mã hàng · cần lấy ${ctn ? `${ctn} thùng` : `số lượng ${fmtNum(q)}`}.`), warn: res.warnings.join(' ') });
       }
     } catch (err) { setMsg({ bad: true, text: tr('Could not read this file: ', 'Không đọc được file: ') + (err.message || err) }); }
     setBusy(false);
   };
   const pp = pickProgress(rec);
+  const stock = (rec.pick || []).length ? currentStock([...state.records.values()]) : [];
   const stLabel = { todo: tr('To pick', 'Chưa lấy'), part: tr('Short', 'Thiếu'), done: tr('Done', 'Đủ'), over: tr('Too many', 'Thừa') };
   const stKind = { todo: 'idle', part: 'warn', done: 'good', over: 'bad' };
   return html`<div class="card pick">
     <div class="block-title"><h3>${tr('Pick list', 'Danh sách lấy hàng')}</h3>
-      ${(rec.pick || []).length > 0 && html`<span>${pp.gotCartons} / ${pp.cartons} ${tr('cartons', 'thùng')} · ${fmtNum(pp.gotQty)} / ${fmtNum(pp.qty)}</span>`}</div>
+      ${(rec.pick || []).length > 0 && html`<span>${pp.cartons ? `${pp.gotCartons} / ${pp.cartons} ${tr('cartons', 'thùng')} · ` : ''}${fmtNum(pp.gotQty)} / ${fmtNum(pp.qty)}</span>`}</div>
     ${!(rec.pick || []).length && html`<p class="muted small">${tr('Optional: upload the delivery packing list (Excel). Then scan the cartons: the screen checks each item and count against it.', 'Tùy chọn: tải packing list giao hàng (Excel). Sau đó quét thùng: màn hình kiểm tra từng mã và số lượng theo danh sách.')}</p>`}
     ${(rec.pick || []).length > 0 && html`<div class="table-wrap"><table class="data">
-      <thead><tr><th>${tr('Item', 'Mã hàng')}</th><th>${tr('Customer ref', 'Mã KH')}</th><th class="r">${tr('Asked', 'Yêu cầu')}</th><th class="r">${tr('Scanned', 'Đã quét')}</th><th class="r">${tr('Cartons', 'Thùng')}</th><th>${tr('Status', 'Trạng thái')}</th></tr></thead>
-      <tbody>${pp.rows.map((r) => html`<tr><td class="mono">${r.code}</td><td>${r.ref}</td><td class="r">${fmtNum(r.qty)}</td><td class="r b">${fmtNum(r.gotQty)}</td><td class="r">${r.gotCartons} / ${r.cartons}</td><td><${Chip} kind=${stKind[r.status]}>${stLabel[r.status]}</${Chip}></td></tr>`)}
-        ${pp.extra.map((r) => html`<tr><td class="mono">${r.code}</td><td></td><td class="r">0</td><td class="r b">${fmtNum(r.gotQty)}</td><td class="r">${r.gotCartons}</td><td><${Chip} kind="bad">${tr('Not on list', 'Không có trong DS')}</${Chip}></td></tr>`)}</tbody>
+      <thead><tr><th>${tr('Item', 'Mã hàng')}</th><th>${tr('Customer ref', 'Mã KH')}</th><th class="r">${tr('Asked', 'Yêu cầu')}</th><th class="r">${tr('In stock', 'Tồn kho')}</th><th>${tr('Pick from (oldest first)', 'Lấy tại (hàng cũ trước)')}</th><th class="r">${tr('Scanned', 'Đã quét')}</th><th class="r">${tr('Cartons', 'Thùng')}</th><th>${tr('Status', 'Trạng thái')}</th></tr></thead>
+      <tbody>${pp.rows.map((r) => { const sg = pickSuggest(stock, rec.fromWh, r.code, r.qty); return html`<tr><td class="mono">${r.code}</td><td>${r.ref}</td><td class="r">${fmtNum(r.qty)}</td>
+        <td class=${'r ' + (sg.enough ? '' : 'bad-text b')}>${fmtNum(sg.onHand)}</td>
+        <td class="small">${sg.from.length ? sg.from.map((g) => `${g.loc ? locLabel(g.loc) : tr('no location', 'chưa có vị trí')} · ${g.cartons} ${tr('ctn', 'thùng')}`).join(' → ') : html`<span class="muted">${tr('none in stock', 'không có tồn')}</span>`}</td>
+        <td class="r b">${fmtNum(r.gotQty)}</td><td class="r">${r.gotCartons}${r.cartons ? ` / ${r.cartons}` : ''}</td><td><${Chip} kind=${stKind[r.status]}>${stLabel[r.status]}</${Chip}></td></tr>`; })}
+        ${pp.extra.map((r) => html`<tr><td class="mono">${r.code}</td><td></td><td class="r">0</td><td></td><td></td><td class="r b">${fmtNum(r.gotQty)}</td><td class="r">${r.gotCartons}</td><td><${Chip} kind="bad">${tr('Not on list', 'Không có trong DS')}</${Chip}></td></tr>`)}</tbody>
     </table></div>
     ${pp.complete && html`<p class="pick-ok"><${Icon} name="check" /> ${tr('Everything on the pick list is scanned.', 'Đã quét đủ toàn bộ danh sách lấy hàng.')}</p>`}`}
     <div class="pick-actions">
