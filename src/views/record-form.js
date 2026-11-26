@@ -4,7 +4,7 @@ import { html, useState, useEffect, useRef } from '../../vendor/preact-htm.js';
 import { tr } from '../i18n.js';
 import { useStore, getRecord, newRecord, saveRecord, docNoTaken, nextDocNo, findCarton, cartonLocation, toast, state } from '../store.js';
 import { Icon, Btn, Field, Input, NumInput, Select, ItemPicker, WhSelect, PageHead, Modal, Chip } from '../components.js';
-import { UNITS, FSC, perCartonNotation, handNotation, split, notation, totals, validate, typeName, scanGroups, unitLabel, recordCartons, pickFromLines, pickProgress, pickSuggest, currentStock, locLabel } from '../model.js';
+import { UNITS, FSC, perCartonNotation, handNotation, split, notation, totals, validate, typeName, scanGroups, unitLabel, recordCartons, pickFromLines, pickProgress, pickSuggest, currentStock, locLabel, closestCode } from '../model.js';
 import { num, round, fmtNum, fmtDec, newId, today, clean, go, normLoc } from '../util.js';
 import { parseScan } from '../qr.js';
 import { Scanner, feedback } from './scanner.js';
@@ -56,10 +56,11 @@ function LineCard({ line, idx, type, onChange, onRemove, onDuplicate, showMore }
       ${(isShip || isIn) && html`<${Field} label="Customer PO"><${Input} value=${line.po} onInput=${(v) => set({ po: v })} /></${Field}>`}
       ${type === 'handoff' && html`<${Field} label=${tr('Requested qty', 'SL yêu cầu')}><${NumInput} value=${line.reqQty} onInput=${(v) => set({ reqQty: v })} /></${Field}>`}
       <${Field} label=${type === 'handoff' ? tr('Actual qty', 'SL thực nhận') : isShip ? tr('Order qty', 'SL đặt hàng') : tr('Quantity', 'Số lượng')} required>
-        <${NumInput} value=${line.qty} onInput=${(v) => set({ qty: v })} />
+        <${NumInput} value=${line.qty} onInput=${(v) => set({ qty: v, ...(line.oneLabel ? { ppc: v } : {}) })} />
       </${Field}>
-      <${Field} label=${tr('Pcs per carton', 'SL / thùng')} hint=${!num(line.ppc) ? tr('Leave empty = no labels', 'Để trống = không in nhãn') : ''}>
-        <${NumInput} value=${line.ppc} onInput=${(v) => set({ ppc: v })} />
+      <${Field} label=${tr('Pcs per carton', 'SL / thùng')} hint=${line.oneLabel ? tr('1 sticker for the whole line', '1 nhãn cho cả dòng') : !num(line.ppc) ? tr('Leave empty = no labels', 'Để trống = không in nhãn') : ''}>
+        <${NumInput} value=${line.ppc} onInput=${(v) => set({ ppc: v })} readOnly=${!!line.oneLabel} />
+        ${!isShip && html`<label class="check small"><input type="checkbox" checked=${!!line.oneLabel} onChange=${(e) => set(e.target.checked ? { oneLabel: true, ppc: line.qty } : { oneLabel: false, ppc: '' })} /> ${tr('1 sticker for the whole line (raw materials)', '1 nhãn cho cả dòng (nguyên vật liệu)')}</label>`}
       </${Field}>
       <${Field} label=${tr('Unit', 'Đơn vị')}><${Select} value=${line.unit || 'piece'} onChange=${(v) => set({ unit: v })} options=${unitOpts()} /></${Field}>
       ${type === 'handoff' && html`<${Field} label=${tr('Work order', 'Lệnh sản xuất')}><${Input} value=${line.wo} onInput=${(v) => set({ wo: v })} placeholder="WO10131" /></${Field}>`}
@@ -88,7 +89,8 @@ function LineCard({ line, idx, type, onChange, onRemove, onDuplicate, showMore }
       </div>`}`}
     ${line.code && !state.items.has(line.code) && html`<p class="line-warn"><${Icon} name="info" />${tr('New code — not in the item list yet. Check it is typed correctly; it will be added when you save.', 'Mã mới — chưa có trong danh mục. Kiểm tra lại mã; mã sẽ được thêm khi lưu.')}</p>`}
     <div class="line-foot">
-      ${sp.count ? html`<span class="notation">${notation(line.qty, line.ppc)}${num(line.ppc) > 0 ? ` · ${tr('per carton', 'mỗi thùng')} ${perCartonNotation(line.ppc, line.bundle)} · ${handNotation(line.qty, line.ppc).total}${handNotation(line.qty, line.ppc).odd ? ' + ' + handNotation(line.qty, line.ppc).odd : ''}` : ''}</span><span>= ${fmtNum(num(line.qty))} ${unitLabel(line.unit)} · <b>${sp.count} ${tr(sp.count === 1 ? 'label' : 'labels', 'nhãn')}</b></span>`
+      ${line.oneLabel && num(line.qty) > 0 ? html`<span class="notation">${tr('1 sticker for the whole line', '1 nhãn cho cả dòng')}</span><span>= ${fmtNum(num(line.qty))} ${unitLabel(line.unit)} · <b>1 ${tr('label', 'nhãn')}</b></span>`
+        : sp.count ? html`<span class="notation">${notation(line.qty, line.ppc)}${num(line.ppc) > 0 ? ` · ${tr('per carton', 'mỗi thùng')} ${perCartonNotation(line.ppc, line.bundle)} · ${handNotation(line.qty, line.ppc).total}${handNotation(line.qty, line.ppc).odd ? ' + ' + handNotation(line.qty, line.ppc).odd : ''}` : ''}</span><span>= ${fmtNum(num(line.qty))} ${unitLabel(line.unit)} · <b>${sp.count} ${tr(sp.count === 1 ? 'label' : 'labels', 'nhãn')}</b></span>`
         : num(line.qty) > 0 ? html`<span class="muted">${tr('No carton split — quantity only, no labels.', 'Không chia thùng — chỉ ghi số lượng, không in nhãn.')}</span>` : html`<span class="muted">${tr('Enter quantity and pcs per carton to create carton labels.', 'Nhập số lượng và SL/thùng để tạo nhãn thùng.')}</span>`}
     </div>
   </div>`;
@@ -120,7 +122,10 @@ function ScanModal({ recRef, setRec, onClose }) {
     // The carton keeps its own production label; remember its size/weights for the packing list.
     const it = state.items.get(c.code) || {};
     const pick = (k) => (num(c[k]) > 0 ? num(c[k]) : num(it[k]) > 0 ? num(it[k]) : '');
-    const next = { ...cur, scans: [...(cur.scans || []), { cid: c.id, code: c.code, ref: c.ref || '', desc: c.desc || '', qty: c.qty, unit: c.unit, from: f.rec.id,
+    // A carton opened before holds less than its label says: start from what is in it now.
+    const now = currentStock([...state.records.values()]).find((x) => x.cid === c.id);
+    const inside = now ? num(now.qty) : num(c.qty);
+    const next = { ...cur, scans: [...(cur.scans || []), { cid: c.id, code: c.code, ref: c.ref || '', desc: c.desc || '', qty: inside, full: inside, unit: c.unit, from: f.rec.id,
       nw: c.isPartial ? '' : pick('nw'), gw: c.isPartial ? '' : pick('gw'), l: pick('l'), w: pick('w'), h: pick('h'), wo: c.wo || '', fsc: c.fsc || '' }] };
     recRef.current = next; // so a fast second scan sees this one
     setRec(next);
@@ -153,14 +158,22 @@ function ScannedList({ rec, setRec }) {
   const [open, setOpen] = useState(false);
   if (!groups.length) return null;
   const remove = (cid) => setRec((r) => ({ ...r, scans: r.scans.filter((s) => s.cid !== cid) }));
+  const take = (cid, v) => setRec((r) => ({ ...r, scans: r.scans.map((s) => (s.cid === cid ? { ...s, qty: Math.max(0, Math.min(num(v), num(s.full) || num(s.qty))) } : s)) }));
+  const isShip = rec.type === 'shipment';
   return html`<div class="card scanned">
     <div class="block-title"><h3>${tr('Scanned cartons', 'Thùng đã quét')}</h3><span>${(rec.scans || []).length} ${tr('cartons', 'thùng')}</span></div>
     <div class="table-wrap"><table class="data">
       <thead><tr><th>${tr('Item', 'Mã hàng')}</th><th>${tr('Customer ref', 'Mã KH')}</th><th class="r">${tr('Cartons', 'Thùng')}</th><th class="r">${tr('Per carton', 'SL/thùng')}</th><th class="r">${tr('Total', 'Tổng')}</th></tr></thead>
       <tbody>${groups.map((g) => html`<tr><td class="mono">${g.code}</td><td>${g.ref}</td><td class="r">${g.cartons}</td><td class="r">${fmtNum(g.qtyPer)}</td><td class="r b">${fmtNum(g.qty)}</td></tr>`)}</tbody>
     </table></div>
-    <button class="link small" onClick=${() => setOpen(!open)}>${open ? tr('Hide carton IDs', 'Ẩn mã thùng') : tr('Show carton IDs (remove a wrong scan)', 'Xem mã thùng (xóa thùng quét nhầm)')}</button>
-    ${open && html`<div class="cid-list">${rec.scans.map((s) => html`<span class="chip info">${s.cid}<button aria-label=${tr('Remove', 'Xóa')} onClick=${() => remove(s.cid)}><${Icon} name="x" /></button></span>`)}</div>`}
+    <button class="link small" onClick=${() => setOpen(!open)}>${open ? tr('Hide cartons', 'Ẩn danh sách thùng') : isShip ? tr('Show cartons (remove a wrong scan, or take only part of a carton)', 'Xem thùng (xóa thùng quét nhầm, hoặc chỉ lấy một phần thùng)') : tr('Show carton IDs (remove a wrong scan)', 'Xem mã thùng (xóa thùng quét nhầm)')}</button>
+    ${open && !isShip && html`<div class="cid-list">${rec.scans.map((s) => html`<span class="chip info">${s.cid}<button aria-label=${tr('Remove', 'Xóa')} onClick=${() => remove(s.cid)}><${Icon} name="x" /></button></span>`)}</div>`}
+    ${open && isShip && html`<div class="table-wrap"><table class="data take">
+      <thead><tr><th>${tr('Carton', 'Thùng')}</th><th>${tr('Item', 'Mã hàng')}</th><th class="r">${tr('In the carton', 'Trong thùng')}</th><th class="r">${tr('Taken', 'Lấy ra')}</th><th></th></tr></thead>
+      <tbody>${rec.scans.map((s) => html`<tr><td class="mono small">${s.cid}</td><td class="mono">${s.code}</td><td class="r">${fmtNum(num(s.full) || num(s.qty))}</td>
+        <td class="r"><input class="input num take-in" type="number" min="0" value=${s.qty} onInput=${(e) => take(s.cid, e.target.value)} aria-label=${tr('Pieces taken', 'Số lượng lấy ra')} />
+          ${num(s.full) && num(s.qty) < num(s.full) ? html`<small class="muted"> · ${tr('opened, stays in stock', 'mở thùng, còn lại trong kho')}: ${fmtNum(num(s.full) - num(s.qty))}</small>` : ''}</td>
+        <td><button class="icon-btn" aria-label=${tr('Remove', 'Xóa')} onClick=${() => remove(s.cid)}><${Icon} name="x" /></button></td></tr>`)}</tbody></table></div>`}
     ${rec.type === 'shipment' && html`<div class="scan-po">
       <p class="muted small">${tr('These cartons ship as they are and keep their production labels — no new labels are printed. Enter the customer PO for each item:', 'Các thùng này được xuất nguyên và giữ nhãn sản xuất — không in nhãn mới. Nhập PO của khách cho từng mã hàng:')}</p>
       <div class="dims-list">${[...new Set(groups.map((g) => g.code))].map((code) => html`<label class="po-row"><span class="mono">${code}</span><${Input} value=${(rec.scanPo || {})[code] || ''} onInput=${(v) => setRec((r) => ({ ...r, scanPo: { ...(r.scanPo || {}), [code]: v } }))} placeholder="Customer PO" /></label>`)}</div>
@@ -172,19 +185,31 @@ function ScannedList({ rec, setRec }) {
 
 function ImportPackingList({ rec, setRec }) {
   const [busy, setBusy] = useState(false);
+  const [prog, setProg] = useState(null);
   const [result, setResult] = useState(null);
   const onFile = async (e) => {
     const file = e.target.files && e.target.files[0];
     e.target.value = '';
     if (!file) return;
-    if (/\.(jpe?g|png|heic|webp)$/i.test(file.name)) {
-      setResult({ bad: true, warnings: [tr('Photos cannot be read yet. Please use the supplier\'s PDF, or enter the lines below.', 'Chưa đọc được ảnh chụp. Hãy dùng file PDF của nhà cung cấp, hoặc nhập các dòng bên dưới.')] });
-      return;
-    }
     setBusy(true);
     try {
       const keep = rec.lines.filter((l) => clean(l.code) || num(l.qty) > 0);
-      const res = await parsePackingListFile(file, { firstLn: rec.nextLn });
+      setProg(null);
+      const res = await parsePackingListFile(file, { firstLn: rec.nextLn, onProgress: (f, p, n) => setProg({ f, p, n }) });
+      setProg(null);
+      // A photo can misread a character: snap unknown codes to the closest code in the item list.
+      const fixed = [];
+      if (res.how === 'photo' && state.items.size) {
+        const known = [...state.items.keys()];
+        res.lines = res.lines.map((l) => {
+          if (state.items.has(l.code)) return l;
+          const c = closestCode(l.code, known);
+          if (c) { fixed.push(`${l.code} → ${c}`); return { ...l, code: c }; }
+          return l;
+        });
+      }
+      if (fixed.length) res.warnings.push(tr(`Codes corrected to the closest item: ${fixed.join(', ')} — please check.`, `Mã được sửa theo mã gần nhất: ${fixed.join(', ')} — vui lòng kiểm tra.`));
+      if (res.how === 'photo') { const noQty = res.lines.filter((l) => !num(l.qty)).map((l) => l.code); if (noQty.length) res.warnings.push(tr(`No quantity found for ${noQty.join(', ')}: enter it below.`, `Không đọc được số lượng cho ${noQty.join(', ')}: nhập bên dưới.`)); }
       // Delivery notes rarely say pcs per carton, weights or carton size: take them from the item list.
       let fromList = 0;
       res.lines = res.lines.map((l) => {
@@ -204,7 +229,7 @@ function ImportPackingList({ rec, setRec }) {
           extRef: r.extRef || ([...new Set(res.lines.map((l) => l.po).filter(Boolean))].length === 1 ? res.lines[0].po : r.extRef) }));
       }
       const cartons = res.lines.reduce((a, l) => a + split(l.qty, l.ppc).count, 0);
-      setResult({ file: file.name, lines: res.lines.length, cartons, qty: res.lines.reduce((a, l) => a + num(l.qty), 0), warnings: res.warnings, bad: !res.lines.length });
+      setResult({ file: file.name, lines: res.lines.length, cartons, qty: res.lines.reduce((a, l) => a + num(l.qty), 0), warnings: res.warnings, bad: !res.lines.length, noPpc });
     } catch (err) {
       setResult({ bad: true, warnings: [tr('Could not read this file: ', 'Không đọc được file: ') + (err.message || err)] });
     }
@@ -212,13 +237,14 @@ function ImportPackingList({ rec, setRec }) {
   };
   return html`<div class="card import-pl">
     <div class="block-title"><h3>${tr('Supplier document', 'Chứng từ nhà cung cấp')}</h3></div>
-    <p class="muted small">${tr('Upload the supplier\'s packing list or delivery note (PDF or Excel). The system reads the item codes, quantities and PO; pcs per carton come from the item list. Check the lines below before printing.', 'Tải packing list hoặc phiếu giao hàng của nhà cung cấp (PDF hoặc Excel). Hệ thống đọc mã hàng, số lượng và PO; SL/thùng lấy từ danh mục mã hàng. Kiểm tra các dòng bên dưới trước khi in.')}</p>
-    <label class=${'btn primary' + (busy ? ' disabled' : '')}><${Icon} name="upload" /><span>${busy ? tr('Reading…', 'Đang đọc…') : tr('Upload packing list / delivery note (PDF or Excel)', 'Tải packing list / phiếu giao hàng (PDF hoặc Excel)')}</span>
-      <input type="file" accept=".pdf,.xlsx,.xls,.csv,application/pdf" hidden onChange=${onFile} disabled=${busy} /></label>
+    <p class="muted small">${tr('PDF, Excel, a scanned PDF or a photo of the paper. The system reads the item codes, quantities, PO and supplier; pcs per carton come from the item list. A photo takes 10–30 seconds and must be checked line by line. Nothing leaves this device.', 'PDF, Excel, PDF scan hoặc ảnh chụp chứng từ. Hệ thống đọc mã hàng, số lượng, PO và nhà cung cấp; SL/thùng lấy từ danh mục mã hàng. Ảnh chụp mất 10–30 giây và cần kiểm tra từng dòng. Dữ liệu không rời khỏi thiết bị này.')}</p>
+    <label class=${'btn primary' + (busy ? ' disabled' : '')}><${Icon} name="upload" /><span>${busy ? (prog ? tr(`Reading the picture… ${Math.round(prog.f * 100)}%`, `Đang đọc ảnh… ${Math.round(prog.f * 100)}%`) : tr('Reading…', 'Đang đọc…')) : tr('Upload or photograph the packing list / delivery note', 'Tải lên hoặc chụp packing list / phiếu giao hàng')}</span>
+      <input type="file" accept="image/*,.pdf,.xlsx,.xls,.csv,application/pdf" hidden onChange=${onFile} disabled=${busy} /></label>
     <button class="link small tpl-link" onClick=${downloadStockInTemplate}>${tr('Download the blank stock-in template (same file for every warehouse)', 'Tải mẫu nhập kho trống (cùng một file cho mọi kho)')}</button>
     ${result && html`<div class=${'banner ' + (result.bad ? 'bad' : result.warnings.length ? 'warn' : 'info')}><${Icon} name=${result.bad ? 'alert' : 'check'} /><div>
       ${!result.bad && html`<b>${result.file}</b>: ${tr(`${result.lines} ${result.lines === 1 ? 'line' : 'lines'} read · total quantity ${fmtNum(result.qty)} · ${result.cartons} carton stickers.`, `đã đọc ${result.lines} dòng · tổng số lượng ${fmtNum(result.qty)} · ${result.cartons} nhãn thùng.`)}`}
-      ${result.warnings.length > 0 && html`<ul>${result.warnings.map((w) => html`<li>${w}</li>`)}</ul>`}</div></div>`}
+      ${result.warnings.length > 0 && html`<ul>${result.warnings.map((w) => html`<li>${w}</li>`)}</ul>`}
+      ${(result.noPpc || []).length > 0 && html`<div class="banner-actions"><${Btn} small onClick=${() => { const set = new Set(result.noPpc); setRec((r) => ({ ...r, lines: r.lines.map((l) => (set.has(l.code) && !num(l.ppc) ? { ...l, oneLabel: true, ppc: l.qty } : l)) })); setResult({ ...result, noPpc: [] }); }}>${tr('Raw materials: 1 sticker per line for these', 'Nguyên vật liệu: 1 nhãn cho mỗi dòng này')}</${Btn}></div>`}</div></div>`}
   </div>`;
 }
 

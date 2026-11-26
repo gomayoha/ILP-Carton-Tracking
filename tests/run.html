@@ -15,7 +15,7 @@
 <p>Open this page from the local server (e.g. http://127.0.0.1:8765/tests/run.html). Every line should be green.</p>
 <div id="out"></div>
 <script type="module">
-  import { split, notation, packingRows, totals, movementBlocks, recordCartons, fmtWO, validate, handNotation, perCartonNotation, receiptState, hasReceipt, scanGroups, packingListLines, cartonPallet, excelDate, pickFromLines, pickProgress, currentStock, stockByLocation, rackOf, locLabel, cartonLedger, stockDataRows, STOCK_DATA_HEADER, textToLines, linesToTable, docNum, parseDims, docPO, pickSuggest, docSupplier, docNumber, qrInRows, STOCK_IN_HEADER } from '../src/model.js';
+  import { split, notation, packingRows, totals, movementBlocks, recordCartons, fmtWO, validate, handNotation, perCartonNotation, receiptState, hasReceipt, scanGroups, packingListLines, cartonPallet, excelDate, pickFromLines, pickProgress, currentStock, stockByLocation, rackOf, locLabel, cartonLedger, stockDataRows, STOCK_DATA_HEADER, textToLines, linesToTable, docNum, parseDims, docPO, pickSuggest, docSupplier, docNumber, qrInRows, STOCK_IN_HEADER, looseLines, closestCode } from '../src/model.js';
   import { incrementDocNo, norm } from '../src/util.js';
   import { parseScan, cartonPayload, locationPayload } from '../src/qr.js';
   import { DEFAULT_SETTINGS } from '../src/store.js';
@@ -228,6 +228,21 @@
   eq('document number read from the document', [docNumber('Ngày 21 · Số: PX0001/11'), docNumber('Packing List No. F20B11-PO'), docNumber('Số lượng 100')], ['PX0001/11', 'F20B11-PO', '']);
   const qin = qrInRows({ type: 'inbound', date: '2026-11-26', supplier: 'Supplier One', toWh: 'FR', extRef: 'PO-1', lines: [{ code: 'ILPTST00000056', ref: 'R', desc: 'Box', unit: 'piece', qty: 1000, ppc: 250, location: 'A.1.2', l: 40, w: 25, h: 14 }] }, { whName: () => 'France' });
   eq('received list in the QR in layout', [STOCK_IN_HEADER.length, qin[0].length, qin[0][0], qin[0][2], qin[0][5], qin[0][14], qin[0][16], qin[0][17], qin[0][18]], [19, 19, 'France', 'ILPTST00000056', 'A. 1. 2', 'PO-1', 'Supplier One', 1000, 4]);
+
+  // Photos (read inside the browser, then a looser line-by-line reading)
+  const photo = looseLines('STT Mã vật tư Tên vật tư ĐVT Số lượng\n1 ILPTEST0000201 Kéo cắt Cái 2 0\n2 ILPTEST0000202 Keo 502 - 8g/\nLọ 100 0\n3 ILPTEST0000203 Màng PE 0.6kg Cuộn\n5\nTỔNG 0');
+  eq('photo: quantity after the unit word, units, kg inside a name ignored', photo.map((l) => [l.code, l.qty, l.unit]), [['ILPTEST0000201', 2, 'piece'], ['ILPTEST0000202', 100, 'piece'], ['ILPTEST0000203', 5, 'roll']]);
+  eq('photo: "Hộp 1.000" read as 1000 boxes', looseLines('1 ILPTEST0000204 600*400*360 Hộp 1.000').map((l) => [l.qty, l.unit]), [[1000, 'box']]);
+  eq('photo: a misread code snaps to the closest item code', [closestCode('ILPTEST0000245', ['ILPTEST0000215', 'ILPTEST0000999']), closestCode('ILPXXXX', ['ILPTEST0000215'])], ['ILPTEST0000215', '']);
+  eq('form template number "Mẫu số: 02-VT" is not the document number', docNumber('Mẫu số: 02-VT (Ban hành theo thông tư)\nSố: PX0002/11'), 'PX0002/11');
+
+  // Opening a carton: pieces taken on a shipment, the rest stays in stock with the same QR
+  const openShip = { id: 'SHP00002', type: 'shipment', docNo: 'S2', date: '2026-11-04', createdAt: 4, status: 'active', fromWh: 'FR', lines: [], scans: [{ cid: ids10[1], code: 'ILPTST00000010', qty: 100, full: 250 }] };
+  const afterOpen = currentStock([recv, put, shipOut, openShip]).find((c) => c.cid === ids10[1]);
+  eq('opened carton stays in stock with the rest', [afterOpen.qty, afterOpen.opened], [150, true]);
+  eq('opened carton: second shipment takes the rest, carton leaves stock', currentStock([recv, put, shipOut, openShip, { ...openShip, id: 'SHP00003', createdAt: 5, scans: [{ cid: ids10[1], code: 'ILPTST00000010', qty: 150, full: 150 }] }]).some((c) => c.cid === ids10[1]), false);
+  eq('opened carton is not marked shipped in Stock data', cartonLedger([recv, openShip]).find((c) => c.cid === ids10[1]).shipped, null);
+  eq('pick progress counts the pieces taken, not the carton', pickProgress({ pick: [{ code: 'ILPTST00000010', qty: 100, cartons: 0 }], scans: openShip.scans }).rows[0].status, 'done');
 
   out.insertAdjacentHTML('afterbegin', `<h2 class="${failed ? 'fail' : 'pass'}">${failed ? `${failed} failed, ${passed} passed` : `All ${passed} tests passed`}</h2>`);
   document.title = failed ? `✗ ${failed} failed` : `✓ ${passed} passed`;

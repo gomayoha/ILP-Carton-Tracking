@@ -612,3 +612,5 @@ tr.same-loc td { border-top-color: transparent; }
 .std-buttons { display: flex; gap: 10px; flex-wrap: wrap; }
 .check { display: inline-flex; gap: 6px; align-items: center; margin-top: 6px; }
 .tpl-link { margin-left: 14px; }
+.data.take .take-in { width: 90px; min-height: 34px; padding: 0 8px; text-align: right; }
+.input[readonly] { background: var(--soft, #f3f2ee); color: var(--muted, #666); }

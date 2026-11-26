@@ -28,3 +28,22 @@ export async function pdfTable(file) {
   await doc.destroy();
   return { ...linesToTable(textToLines(items)), hasText: items.length > 0 };
 }
+
+// Scanned PDF (pictures only): draw each page on a canvas so ocr.js can read it.
+export async function pdfPageCanvases(file, scale = 2.2) {
+  const L = await pdfjs();
+  const doc = await L.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
+  const out = [];
+  for (let p = 1; p <= Math.min(doc.numPages, 10); p++) {
+    const page = await doc.getPage(p);
+    const vp = page.getViewport({ scale });
+    const c = document.createElement('canvas');
+    c.width = Math.round(vp.width); c.height = Math.round(vp.height);
+    const g = c.getContext('2d');
+    g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
+    await page.render({ canvasContext: g, viewport: vp }).promise;
+    out.push(c);
+  }
+  await doc.destroy();
+  return out;
+}

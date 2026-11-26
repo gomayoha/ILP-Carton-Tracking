@@ -4,8 +4,8 @@ import { html } from '../../vendor/preact-htm.js';
 import { tr } from '../i18n.js';
 import { useStore, findCarton, cartonMovements, cartonLocation, getRecord } from '../store.js';
 import { Icon, Btn, Chip, PageHead, Empty } from '../components.js';
-import { typeName, unitLabel, fmtWO, warehouse } from '../model.js';
-import { fmtDate, fmtNum, fmtDec } from '../util.js';
+import { typeName, unitLabel, fmtWO, warehouse, currentStock } from '../model.js';
+import { fmtDate, fmtNum, fmtDec, num } from '../util.js';
 import { printLabels } from '../print.js';
 
 export function CartonResult({ cid, compact }) {
@@ -26,7 +26,11 @@ export function CartonResult({ cid, compact }) {
       </div></div>
     </div>`;
   }
-  const { carton: c, rec } = found;
+  const { carton: c0, rec } = found;
+  // An opened carton (pieces taken on a shipment) keeps its QR; show and reprint what is left in it.
+  const now = currentStock([...s.records.values()]).find((x) => x.cid === cid);
+  const opened = !!(now && now.opened);
+  const c = opened ? { ...c0, qty: now.qty, isPartial: true, perCarton: '' } : c0;
   const moves = cartonMovements(cid);
   const loc = cartonLocation(cid);
   const wh = (code) => { const w = warehouse(s.settings, code); return tr(w.name, w.vi); };
@@ -35,7 +39,7 @@ export function CartonResult({ cid, compact }) {
     ? html`<${Chip} kind="bad" icon="ban">${tr('Record voided', 'Chứng từ đã hủy')}</${Chip}>`
     : loc?.shipped
       ? html`<${Chip} kind="info" icon="truck">${tr('Shipped', 'Đã xuất')} · ${loc.rec.docNo}</${Chip}>`
-      : html`<${Chip} kind="good" icon="check">${tr('In', 'Tại')} ${wh(loc?.wh)}${loc?.loc ? ' · ' + loc.loc : ''}</${Chip}>`;
+      : html`<${Chip} kind="good" icon="check">${tr('In', 'Tại')} ${wh(loc?.wh)}${loc?.loc ? ' · ' + loc.loc : ''}${loc?.opened ? ' · ' + tr('opened', 'đã mở') : ''}</${Chip}>`;
 
   return html`<div class=${'card result ' + (voided ? 'void' : '')}>
     <div class="result-head">
@@ -44,7 +48,7 @@ export function CartonResult({ cid, compact }) {
         ${status}
         <h3 class="mono">${c.code}</h3>
         <p><b>${c.ref || '—'}</b>${c.desc ? ' · ' + c.desc : ''}</p>
-        <p class="result-qty">${fmtNum(c.qty, c.qty % 1 ? 2 : 0)} <small>${unitLabel(c.unit)}</small>${c.isPartial ? html` <${Chip} kind="warn">${tr('Partial carton', 'Thùng lẻ')}</${Chip}>` : ''}</p>
+        <p class="result-qty">${fmtNum(c.qty, c.qty % 1 ? 2 : 0)} <small>${unitLabel(c.unit)}</small>${opened ? html` <${Chip} kind="warn">${tr(`Opened · was ${fmtNum(c0.qty)}`, `Đã mở · ban đầu ${fmtNum(c0.qty)}`)}</${Chip}>` : c.isPartial ? html` <${Chip} kind="warn">${tr('Partial carton', 'Thùng lẻ')}</${Chip}>` : ''}</p>
       </div>
     </div>
     <dl class="kv">
@@ -57,7 +61,7 @@ export function CartonResult({ cid, compact }) {
       ${c.pallet && html`<div><dt>Pallet</dt><dd>${c.pallet}</dd></div>`}
       ${c.location && html`<div><dt>${tr('Location', 'Vị trí')}</dt><dd>${c.location}</dd></div>`}
       ${c.entity && html`<div><dt>${tr('Entity', 'Công ty')}</dt><dd>${c.entity}</dd></div>`}
-      ${(rec.type === 'shipment' || rec.type === 'inbound') && (c.nw || c.gw) && html`<div><dt>N.W / G.W</dt><dd>${fmtDec(c.nw, 2)} / ${fmtDec(c.gw, 2)} kg</dd></div>`}
+      ${(rec.type === 'shipment' || rec.type === 'inbound') && (num(c.nw) > 0 || num(c.gw) > 0) ? html`<div><dt>N.W / G.W</dt><dd>${fmtDec(c.nw, 2)} / ${fmtDec(c.gw, 2)} kg</dd></div>` : ''}
       <div><dt>${tr('Carton ID', 'Mã thùng')}</dt><dd class="mono">${c.id}</dd></div>
     </dl>
     ${!compact && html`<div class="timeline">
@@ -66,12 +70,12 @@ export function CartonResult({ cid, compact }) {
         <li><span class="dot good"></span><div><b>${rec.type === 'shipment' ? tr('Packed for shipment', 'Đóng gói xuất hàng') : tr('Labelled', 'Dán nhãn')} — ${typeName(rec.type)}</b>
           <small>${fmtDate(rec.date)} · ${rec.docNo}${rec.type === 'inbound' ? ` · ${rec.supplier} → ${rec.toWh}` : rec.type !== 'shipment' ? ` · ${rec.fromWh} → ${rec.toWh}` : ` · ${rec.customer}`}</small></div></li>
         ${moves.map((m) => html`<li><span class=${'dot ' + (m.type === 'shipment' ? 'info' : 'good')}></span><div>
-          <b>${m.type === 'shipment' ? tr('Shipped', 'Đã xuất hàng') : m.type === 'putaway' ? tr(`Put on shelf ${m.loc}`, `Xếp lên kệ ${m.loc}`) : tr('Transferred', 'Đã chuyển kho')} — <a class="link" href=${'#/r/' + m.id}>${m.docNo}</a></b>
+          <b>${m.type === 'shipment' ? (() => { const sc = (m.scans || []).find((x) => x.cid === cid); return sc && num(sc.full) && num(sc.qty) < num(sc.full) ? tr(`${fmtNum(sc.qty)} pcs taken`, `Lấy ra ${fmtNum(sc.qty)}`) : tr('Shipped', 'Đã xuất hàng'); })() : m.type === 'putaway' ? tr(`Put on shelf ${m.loc}`, `Xếp lên kệ ${m.loc}`) : tr('Transferred', 'Đã chuyển kho')} — <a class="link" href=${'#/r/' + m.id}>${m.docNo}</a></b>
           <small>${fmtDate(m.date)} · ${m.type === 'shipment' ? m.customer : m.type === 'putaway' ? m.toWh : `${m.fromWh} → ${m.toWh}`}</small></div></li>`)}
       </ol>
     </div>`}
     <div class="result-actions">
-      <${Btn} icon="printer" onClick=${() => printLabels(rec, [c], s.device)}>${tr('Reprint label', 'In lại nhãn')}</${Btn}>
+      <${Btn} icon="printer" onClick=${() => printLabels(rec, [c], s.device)}>${opened ? tr(`Reprint label (${fmtNum(c.qty)} left, same QR)`, `In lại nhãn (còn ${fmtNum(c.qty)}, giữ QR)`) : tr('Reprint label', 'In lại nhãn')}</${Btn}>
       <a class="btn secondary" href=${'#/r/' + rec.id}><${Icon} name="file" /><span>${tr('Open record', 'Mở chứng từ')}</span></a>
     </div>
   </div>`;

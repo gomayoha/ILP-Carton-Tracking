@@ -565,8 +565,10 @@ export function currentStock(records) {
     for (const s of r.scans || []) {
       const c = now.get(s.cid);
       if (!c) continue;
-      if (r.type === 'shipment') now.delete(s.cid);
-      else if (r.type === 'putaway') Object.assign(c, { wh: r.toWh, loc: normLoc(r.loc), date: r.date });
+      if (r.type === 'shipment') {
+        // Opened carton: only part taken, the rest stays in stock under the same QR (Ms Ly, 26 Nov 2026).
+        if (num(s.qty) > 0 && num(s.qty) < num(c.qty)) { c.qty = round(num(c.qty) - num(s.qty), 3); c.opened = true; } else now.delete(s.cid);
+      } else if (r.type === 'putaway') Object.assign(c, { wh: r.toWh, loc: normLoc(r.loc), date: r.date });
       else if (r.type === 'transfer') Object.assign(c, { wh: r.toWh, loc: '', date: r.date });
     }
   }
@@ -628,7 +630,10 @@ export function cartonLedger(records, { whName = (c) => c } = {}) {
     for (const s of r.scans || []) {
       const c = all.get(s.cid);
       if (!c || c.shipped) continue;
-      if (r.type === 'shipment') c.shipped = { date: r.shipDate || r.date, invoice: r.docNo, customer: r.customer || '', po: (r.scanPo || {})[c.code] || '' };
+      if (r.type === 'shipment') {
+        if (num(s.qty) > 0 && num(s.qty) < num(c.qty)) c.qty = round(num(c.qty) - num(s.qty), 3);
+        else c.shipped = { date: r.shipDate || r.date, invoice: r.docNo, customer: r.customer || '', po: (r.scanPo || {})[c.code] || '' };
+      }
       else if (r.type === 'putaway') Object.assign(c, { wh: r.toWh, loc: normLoc(r.loc) });
       else if (r.type === 'transfer') Object.assign(c, { wh: r.toWh, loc: '' });
     }
@@ -767,10 +772,14 @@ export function docSupplier(text) {
 
 export function docNumber(text) {
   const t = String(text);
-  const m = t.match(/(?:packing\s*list\s*no|invoice\s*no|delivery\s*note\s*no|p\/?l\s*no)\.?\s*[:#]?\s*([A-Z0-9][\w/#.-]{2,30})/i)
-    || t.match(/\bSố(?:\s*phiếu)?\s*:\s*([A-Z0-9][\w/.-]{2,30})/i)
-    || t.match(/\bSố\s*DO(?:\s*\(DO\))?\s*:?\s*([A-Z0-9][\w/.-]{2,30})/i);
-  return m ? m[1].replace(/[.,;]+$/, '') : '';
+  const res = [
+    /(?:packing\s*list\s*no|invoice\s*no|delivery\s*note\s*no|p\/?l\s*no)\.?\s*[:#]?\s*([A-Z0-9][\w/#.-]{2,30})/gi,
+    /(?<!M[ẫaâ]u\s{0,2})\bSố(?:\s*phiếu)?\s*:\s*([A-Z0-9][\w/.-]{2,30})/gi,
+    /\bSố\s*DO(?:\s*\(DO\))?\s*:?\s*([A-Z0-9][\w/.-]{2,30})/gi,
+  ];
+  // A real document number always has digits in it ("PHIẾU" read as "PHI" is not one).
+  for (const re of res) for (const m of t.matchAll(re)) { const v = m[1].replace(/[.,;]+$/, ''); if (/\d/.test(v)) return v; }
+  return '';
 }
 
 // One receipt as Ms Ly's "QR in" sheet (the list just received): one row per line.
@@ -781,4 +790,56 @@ export function qrInRows(rec, { whName = (c) => c } = {}) {
     num(l.l) && num(l.w) && num(l.h) ? round((num(l.l) * num(l.w) * num(l.h)) / 1e6, 6) : '',
     l.stockInDate || rec.date || '', l.po || fmtWO(l.wo) || rec.extRef || '', l.supplierCode || '', l.supplierName || rec.supplier || (rec.type === 'handoff' ? 'production' : ''),
     num(l.qty), split(l.qty, l.ppc).count || '']);
+}
+
+// ── Photos: a looser reading ────────────────────────────────────────────────
+// Phone photos of paper rarely give clean columns. For every ILP code in the read text, take the
+// quantity written after a unit word ("Lọ 100", "Hộp 1.000"), else the first number after the code on
+// its line, else the first number on the next lines (until the next code). The warehouse checks it.
+const UNIT_WORD = /^(cai|lo|cuon|hop|thung|bo|to|chai|pcs|pc|pce|kg|roll|rolls|box|boxes|set|sets|ream|sheet|sheets)$/;
+const QTY_TOKEN = /^\d{1,3}(?:[.,]\d{3})+$|^\d{1,7}$/;
+
+export function looseLines(text, { firstLn = 1 } = {}) {
+  const L = String(text).split('\n');
+  const out = [];
+  let ln = firstLn;
+  for (let i = 0; i < L.length; i++) {
+    const up = L[i].toUpperCase();
+    const m = up.match(/ILP[A-Z0-9]{6,}/);
+    if (!m) continue;
+    const seg = [L[i].slice(up.indexOf(m[0]) + m[0].length)];
+    for (let j = i + 1; j < Math.min(L.length, i + 4) && !/ILP[A-Z0-9]{6,}/i.test(L[j]); j++) seg.push(L[j]);
+    const toks = seg.join(' \n ').split(/\s+/).filter(Boolean);
+    const unitAt = toks.findIndex((t) => !/\d/.test(t) && UNIT_WORD.test(norm(t).replace(/[^a-z]/g, '')));
+    const val = (t) => { const v = docNum(t); return typeof v === 'number' && v > 0 ? v : 0; };
+    let qty = 0;
+    if (unitAt >= 0) for (const t of toks.slice(unitAt + 1, unitAt + 3)) if (QTY_TOKEN.test(t) && val(t)) { qty = val(t); break; }
+    if (!qty) for (const t of seg[0].split(/\s+/)) if (QTY_TOKEN.test(t) && val(t)) { qty = val(t); break; }
+    if (!qty) for (const t of toks) if (QTY_TOKEN.test(t) && val(t)) { qty = val(t); break; }
+    const unit = unitAt >= 0 ? unitCode(toks[unitAt]) : 'piece';
+    out.push({ ln: ln++, code: m[0], ref: '', desc: '', unit, qty, ppc: '', reqQty: '', wo: '', po: '', nw: '', gw: '', pnw: '', pgw: '', l: '', w: '', h: '', printDate: '', packDate: '', fsc: '', bundle: '', pallet: '', perPallet: '', location: '', entity: '' });
+  }
+  return out;
+}
+
+// A code read from a photo that is not in the item list: the closest known code (at most 2 characters
+// different, same length ±1), or '' if none is close enough.
+export function closestCode(code, known) {
+  const d = (a, b) => {
+    const m = a.length, n = b.length;
+    if (Math.abs(m - n) > 1) return 99;
+    let prev = Array.from({ length: n + 1 }, (_, j) => j);
+    for (let i = 1; i <= m; i++) {
+      const cur = [i];
+      for (let j = 1; j <= n; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      prev = cur;
+    }
+    return prev[n];
+  };
+  let best = '', bestD = 3, ties = 0;
+  for (const k of known) {
+    const x = d(code, k);
+    if (x < bestD) { best = k; bestD = x; ties = 0; } else if (x === bestD) ties++;
+  }
+  return bestD <= 2 && !ties ? best : '';
 }

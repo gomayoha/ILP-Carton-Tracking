@@ -2,7 +2,7 @@
 
 import { tr } from './i18n.js';
 import { loadScript, norm, clean, num, today, fmtDate, toCSV, downloadFile } from './util.js';
-import { packingRows, totals, movementBlocks, LAYOUTS, recordCartons, split, fmtWO, warehouse, scanGroups, packingListLines, rackOf, locLabel, STOCK_IN_HEADER, STOCK_DATA_HEADER, docPO, docSupplier, docNumber, qrInRows } from './model.js';
+import { packingRows, totals, movementBlocks, LAYOUTS, recordCartons, split, fmtWO, warehouse, scanGroups, packingListLines, rackOf, locLabel, STOCK_IN_HEADER, STOCK_DATA_HEADER, docPO, docSupplier, docNumber, qrInRows, looseLines } from './model.js';
 import { itemToRow, rowToItem } from './store.js';
 
 async function XLSX() {
@@ -112,15 +112,37 @@ export async function parseItemFiles(files, existingRows = []) {
 // ── Supplier packing list import ────────────────────────────────────────────
 // Takes the sheet with the most item rows. Returns { lines, warnings, sheet }.
 
-export async function parsePackingListFile(file, opts) {
+const isImage = (f) => /^image\//.test(f.type) || /\.(jpe?g|png|webp|gif|bmp|heic|heif)$/i.test(f.name);
+export const isDocFile = (f) => isImage(f) || /\.pdf$/i.test(f.name) || f.type === 'application/pdf';
+
+// A table read from a PDF or a photo → lines, plus what the document says about itself.
+function fromTable(t, opts, how) {
+  let res = packingListLines(t.rows, opts);
+  // A photo whose columns could not be lined up: read code by code instead.
+  if (how === 'photo' && !res.lines.length) {
+    const lines = looseLines(t.text, opts);
+    if (lines.length) res = { lines, warnings: [], supplier: '', date: '' };
+  }
+  const po = docPO(t.text);
+  if (po) for (const l of res.lines) if (!l.po) l.po = po;
+  if (how === 'photo' && res.lines.length) res.warnings.unshift(tr('Read from a picture: check every code and quantity against the paper before printing.', 'Đọc từ ảnh: kiểm tra từng mã hàng và số lượng với chứng từ giấy trước khi in.'));
+  return { ...res, po, supplier: res.supplier || docSupplier(t.text), docNo: docNumber(t.text), sheet: how === 'photo' ? 'photo' : 'PDF', how };
+}
+
+// opts.onProgress(fraction, page, pages) while a photo / scanned page is being read.
+export async function parsePackingListFile(file, opts = {}) {
+  if (isImage(file)) {
+    if (/\.(heic|heif)$/i.test(file.name)) return { lines: [], warnings: [tr('HEIC photos cannot be opened here. On iPhone, take the photo from this page (Upload → Take Photo), or save it as JPEG.', 'Không mở được ảnh HEIC. Trên iPhone, chụp ảnh ngay từ trang này (Tải lên → Chụp ảnh), hoặc lưu dạng JPEG.')] };
+    const { ocrTable } = await import('./ocr.js');
+    return fromTable(await ocrTable([file], opts.onProgress), opts, 'photo');
+  }
   if (/\.pdf$/i.test(file.name) || file.type === 'application/pdf') {
-    const { pdfTable } = await import('./pdf.js');
+    const { pdfTable, pdfPageCanvases } = await import('./pdf.js');
     const t = await pdfTable(file);
-    if (!t.hasText) return { lines: [], warnings: [tr('This PDF is a scanned picture (no text inside), so it cannot be read yet. Please use the supplier\'s original PDF, or enter the lines by hand.', 'PDF này là ảnh scan (không có chữ bên trong), nên chưa đọc được. Hãy dùng file PDF gốc của nhà cung cấp, hoặc nhập tay các dòng.')], sheet: 'PDF' };
-    const res = packingListLines(t.rows, opts);
-    const po = docPO(t.text);
-    if (po) for (const l of res.lines) if (!l.po) l.po = po;
-    return { ...res, po, supplier: res.supplier || docSupplier(t.text), docNo: docNumber(t.text), sheet: 'PDF' };
+    if (t.hasText) return fromTable(t, opts, 'pdf');
+    // Scanned PDF: pictures only, read them like photos.
+    const { ocrTable } = await import('./ocr.js');
+    return fromTable(await ocrTable(await pdfPageCanvases(file), opts.onProgress), opts, 'photo');
   }
   const X = await XLSX();
   const wb = X.read(await file.arrayBuffer(), { type: 'array', dense: true });

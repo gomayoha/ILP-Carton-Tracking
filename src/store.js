@@ -3,7 +3,7 @@
 import { useLayoutEffect, useState } from '../vendor/preact-htm.js';
 import { FIREBASE_CONFIG } from './config.js';
 import { newId, norm, num, clean, incrementDocNo, today } from './util.js';
-import { recordCartons, findCartonInRecord, split } from './model.js';
+import { recordCartons, findCartonInRecord, split, currentStock } from './model.js';
 
 export const DEFAULT_SETTINGS = {
   warehouses: [
@@ -151,7 +151,7 @@ function learnFromRecord(rec) {
     const patch = {};
     const take = (f, v) => { if (v !== '' && v !== undefined && num(v) > 0 && num(it[f]) !== num(v)) patch[f] = num(v); };
     const takeText = (f, v) => { if (clean(v) && clean(it[f]) !== clean(v)) patch[f] = clean(v); };
-    take('ppc', line.ppc);
+    if (!line.oneLabel) take('ppc', line.ppc); // "1 sticker for the whole line" is not a carton size
     take('nw', line.nw); take('gw', line.gw); take('l', line.l); take('w', line.w); take('h', line.h);
     if (rec.type === 'shipment') takeText('cust', rec.customer);
     if (!it.desc) takeText('desc', line.desc);
@@ -297,7 +297,16 @@ export function cartonLocation(cid) {
   if (!found || !found.carton) return null;
   const moves = cartonMovements(cid);
   const last = moves[moves.length - 1];
-  if (last) return last.type === 'shipment' ? { shipped: true, rec: last } : { wh: last.toWh, loc: last.type === 'putaway' ? last.loc : '', rec: last };
+  if (last && last.type === 'shipment') {
+    // Only part of the carton was taken: it is still in stock (opened), under the same QR.
+    const s = (last.scans || []).find((x) => x.cid === cid);
+    if (s && num(s.full) && num(s.qty) < num(s.full)) {
+      const now = currentStock([...state.records.values()]).find((x) => x.cid === cid);
+      if (now) return { wh: now.wh, loc: now.loc, opened: true, rec: last };
+    }
+    return { shipped: true, rec: last };
+  }
+  if (last) return { wh: last.toWh, loc: last.type === 'putaway' ? last.loc : '', rec: last };
   if (found.rec.type === 'shipment') return { shipped: true, rec: found.rec, isShippingLabel: true };
   return { wh: found.rec.toWh, loc: found.carton.location || '', rec: found.rec };
 }
