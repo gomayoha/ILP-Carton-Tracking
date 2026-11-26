@@ -70,23 +70,55 @@ function skewAngle(data) {
 // images: File / Blob / canvas[]; progress(0..1, label) is called while reading.
 export async function ocrTable(images, progress) {
   const w = await worker();
-  const items = [];
+  const items = [], itemsRows = [];
   for (let i = 0; i < images.length; i++) {
     onProgress = (m) => { if (progress && m.status === 'recognizing text') progress((i + m.progress) / images.length, i + 1, images.length); };
     const canvas = await toCanvas(images[i]);
     const { data } = await w.recognize(canvas, {}, { blocks: true, text: true });
     const ang = skewAngle(data), cos = Math.cos(-ang), sin = Math.sin(-ang);
-    for (const wd of wordsOf(data)) {
-      const t = String(wd.text || '').trim().replace(/^[|[\]{}]+|[|[\]{}]+$/g, '');
-      if (!t || (wd.confidence !== undefined && wd.confidence < 20)) continue;
-      const b = wd.bbox;
-      const cx = (b.x0 + b.x1) / 2, cy = (b.y0 + b.y1) / 2;
-      const rx = cx * cos - cy * sin, ry = cx * sin + cy * cos; // word centre, turned straight
-      const wdt = b.x1 - b.x0, hgt = b.y1 - b.y0;
-      // Image y grows downward; the line rules expect PDF-style y (upward), so flip it.
-      items.push({ s: t, x: rx - wdt / 2, y: -ry, w: wdt, h: hgt, page: i + 1 });
+    const first = wordsOf(data);
+    let words = first;
+    // The whole-page pass misses a lone digit in a table cell ("2", "5"). Re-read each item row
+    // as one line of text and use those words for that row instead.
+    const codeWords = words.filter((x) => /ILP[A-Z0-9]{6,}/i.test(x.text || ''));
+    if (codeWords.length) {
+      await w.setParameters({ tessedit_pageseg_mode: '7' });
+      try {
+        for (const cw of codeWords.slice(0, 40)) {
+          const h = cw.bbox.y1 - cw.bbox.y0, cy = (cw.bbox.y0 + cw.bbox.y1) / 2;
+          const top = Math.max(0, Math.round(cy - h * 1.3)), height = Math.min(canvas.height - top, Math.round(h * 2.6));
+          // Crop the row into its own image (the library's "rectangle" option reads table borders as text).
+          const strip = document.createElement('canvas');
+          strip.width = canvas.width; strip.height = height;
+          const sg = strip.getContext('2d');
+          sg.fillStyle = '#fff'; sg.fillRect(0, 0, strip.width, strip.height);
+          sg.drawImage(canvas, 0, top, canvas.width, height, 0, 0, canvas.width, height);
+          const r = await w.recognize(strip, {}, { blocks: true });
+          const row = wordsOf(r.data)
+            .map((x) => ({ ...x, bbox: { x0: x.bbox.x0, x1: x.bbox.x1, y0: x.bbox.y0 + top, y1: x.bbox.y1 + top } }))
+            .filter((x) => String(x.text || '').replace(/[|[\]{}]/g, '').trim() && Math.abs((x.bbox.y0 + x.bbox.y1) / 2 - cy) < h * 0.9);
+          if (!row.some((x) => /ILP[A-Z0-9]{6,}/i.test(x.text || ''))) continue; // keep the first reading if this one lost the code
+          words = words.filter((x) => Math.abs((x.bbox.y0 + x.bbox.y1) / 2 - cy) >= h * 0.9).concat(row);
+        }
+      } finally { await w.setParameters({ tessedit_pageseg_mode: '11' }); }
     }
+    const add = (list, out) => {
+      for (const wd of list) {
+        const t = String(wd.text || '').trim().replace(/^[|[\]{}]+|[|[\]{}]+$/g, '');
+        if (!t || (wd.confidence !== undefined && wd.confidence < 20)) continue;
+        const b = wd.bbox;
+        const cx = (b.x0 + b.x1) / 2, cy = (b.y0 + b.y1) / 2;
+        const rx = cx * cos - cy * sin, ry = cx * sin + cy * cos; // word centre, turned straight
+        const wdt = b.x1 - b.x0, hgt = b.y1 - b.y0;
+        // Image y grows downward; the line rules expect PDF-style y (upward), so flip it.
+        out.push({ s: t, x: rx - wdt / 2, y: -ry, w: wdt, h: hgt, page: i + 1 });
+      }
+    };
+    add(first, items);
+    add(words, itemsRows);
   }
   onProgress = null;
-  return { ...linesToTable(textToLines(items)), hasText: items.length > 0 };
+  // Two readings: the whole page (main), and the same with each item row re-read on its own (rows),
+  // which only fills what the main one missed (see excel.js).
+  return { ...linesToTable(textToLines(items)), rows2: linesToTable(textToLines(itemsRows)), hasText: items.length > 0 };
 }

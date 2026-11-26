@@ -61,7 +61,7 @@ export function RecordsPage({ query }) {
 
   const types = [['all', tr('All', 'Tất cả')], ['handoff', typeShort('handoff')], ['inbound', typeShort('inbound')], ['putaway', typeShort('putaway')], ['transfer', typeShort('transfer')], ['shipment', typeShort('shipment')]];
   return html`
-    <${PageHead} eyebrow=${tr('Records', 'Chứng từ')} title=${tr('Slips, transfers & shipments', 'Phiếu, chuyển kho & xuất hàng')}
+    <${PageHead} eyebrow=${tr('Records', 'Chứng từ')} title=${tr('All records', 'Tất cả chứng từ')}
       actions=${html`<a class="btn primary" href="#/new/handoff"><${Icon} name="plus" /><span>${tr('New handoff', 'Phiếu giao nhận mới')}</span></a>`} />
 
     <div class="filters card">

@@ -116,12 +116,27 @@ const isImage = (f) => /^image\//.test(f.type) || /\.(jpe?g|png|webp|gif|bmp|hei
 export const isDocFile = (f) => isImage(f) || /\.pdf$/i.test(f.name) || f.type === 'application/pdf';
 
 // A table read from a PDF or a photo → lines, plus what the document says about itself.
-function fromTable(t, opts, how) {
+function readLines(t, opts) {
   let res = packingListLines(t.rows, opts);
-  // A photo whose columns could not be lined up: read code by code instead.
-  if (how === 'photo' && !res.lines.length) {
-    const lines = looseLines(t.text, opts);
-    if (lines.length) res = { lines, warnings: [], supplier: '', date: '' };
+  // Columns could not be lined up: read code by code instead.
+  if (!res.lines.length) { const lines = looseLines(t.text, opts); if (lines.length) res = { lines, warnings: [], supplier: '', date: '' }; }
+  return res;
+}
+
+function fromTable(t, opts, how) {
+  let res = how === 'photo' ? readLines(t, opts) : packingListLines(t.rows, opts);
+  // Photos: the row-by-row reading only fills gaps (a missing quantity or unit, or a missed code).
+  if (how === 'photo' && t.rows2) {
+    const alt = readLines(t.rows2, opts);
+    const byCode = new Map(alt.lines.map((l) => [l.code, l]));
+    const have = new Set(res.lines.map((l) => l.code));
+    res.lines = res.lines.map((l) => {
+      const b = byCode.get(l.code);
+      if (!b) return l;
+      return { ...l, qty: num(l.qty) > 0 ? l.qty : b.qty, unit: l.unit !== 'piece' ? l.unit : b.unit };
+    });
+    let ln = Math.max(0, ...res.lines.map((l) => l.ln)) + 1;
+    for (const b of alt.lines) if (!have.has(b.code)) res.lines.push({ ...b, ln: ln++ });
   }
   const po = docPO(t.text);
   if (po) for (const l of res.lines) if (!l.po) l.po = po;
