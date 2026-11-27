@@ -167,6 +167,8 @@ main { min-height: 60vh; padding-block: 34px 80px; }
 .chip button { display: inline-grid; place-items: center; margin-left: 2px; }
 .chip button svg { width: 12px; height: 12px; }
 
+.practice-strip { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 8px 16px; background: var(--black); color: #fff; font-size: 13px; }
+.practice-strip .link { color: #fff; text-decoration: underline; background: none; border: 0; font: inherit; cursor: pointer; margin-left: auto; padding: 0; }
 .banner { display: flex; gap: 12px; align-items: flex-start; padding: 14px 18px; border-radius: 8px; margin: 0 0 16px; font-size: 14px; line-height: 1.6; }
 .banner > svg { margin-top: 2px; }
 .banner ul { margin: 6px 0 0; padding-left: 18px; }

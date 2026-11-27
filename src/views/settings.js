@@ -2,7 +2,7 @@
 
 import { html, useState } from '../../vendor/preact-htm.js';
 import { tr, getLang, setLang } from '../i18n.js';
-import { useStore, saveDevice, saveSettings, toast, signOut, resetDemo, DEFAULT_SETTINGS } from '../store.js';
+import { useStore, saveDevice, saveSettings, toast, signOut, resetDemo, DEFAULT_SETTINGS, PRACTICE, setPractice } from '../store.js';
 import { Icon, Btn, PageHead, Field, Input, Select, Confirm, Chip, WhSelect } from '../components.js';
 import { LABEL_PRESETS, printLabels } from '../print.js';
 import { FIREBASE_CONFIG, REQUIRE_LOGIN, APP_VERSION } from '../config.js';
@@ -117,8 +117,8 @@ export function SettingsPage() {
     <section class="card block-card">
       <div class="block-title"><h3>${tr('Connection', 'Kết nối')}</h3></div>
       <dl class="kv">
-        <div><dt>${tr('Mode', 'Chế độ')}</dt><dd>${s.mode === 'cloud' ? tr('Shared database (Firebase)', 'Cơ sở dữ liệu dùng chung (Firebase)') : tr('Demo — this browser only', 'Thử — chỉ trình duyệt này')}</dd></div>
-        ${FIREBASE_CONFIG && html`<div><dt>${tr('Project', 'Dự án')}</dt><dd class="mono">${FIREBASE_CONFIG.projectId}</dd></div>`}
+        <div><dt>${tr('Mode', 'Chế độ')}</dt><dd>${s.mode === 'cloud' ? tr('Shared database (Firebase)', 'Cơ sở dữ liệu dùng chung (Firebase)') : PRACTICE ? tr('Practice — this browser only', 'Tập — chỉ trình duyệt này') : tr('Demo — this browser only', 'Thử — chỉ trình duyệt này')}</dd></div>
+        ${s.mode === 'cloud' && html`<div><dt>${tr('Project', 'Dự án')}</dt><dd class="mono">${FIREBASE_CONFIG.projectId}</dd></div>`}
         <div><dt>${tr('Network', 'Mạng')}</dt><dd>${s.sync.online ? tr('Online', 'Có mạng') : tr('Offline — changes are kept and sent later', 'Mất mạng — thay đổi được giữ lại và gửi sau')}</dd></div>
         ${s.mode === 'cloud' && html`<div><dt>${tr('Waiting to sync', 'Chờ đồng bộ')}</dt><dd>${s.sync.pending || 0}</dd></div>`}
         <div><dt>${tr('Login', 'Đăng nhập')}</dt><dd>${REQUIRE_LOGIN ? (s.user ? s.user.email : '—') : tr('Off — anyone with the link can use it', 'Tắt — ai có link đều dùng được')}</dd></div>
@@ -127,7 +127,8 @@ export function SettingsPage() {
       </dl>
       <div class="row-actions">
         ${REQUIRE_LOGIN && s.user && html`<${Btn} icon="logout" onClick=${signOut}>${tr('Sign out', 'Đăng xuất')}</${Btn}>`}
-        ${s.mode === 'local' && html`<${Btn} kind="danger-ghost" icon="trash" onClick=${() => setConfirmReset(true)}>${tr('Clear demo data', 'Xóa dữ liệu thử')}</${Btn}>`}
+        ${FIREBASE_CONFIG && html`<${Btn} icon="sparkle" onClick=${() => setPractice(!PRACTICE)}>${PRACTICE ? tr('Leave practice mode', 'Thoát chế độ tập') : tr('Practice mode (trial data on this device only)', 'Chế độ tập (dữ liệu thử chỉ trên máy này)')}</${Btn}>`}
+        ${s.mode === 'local' && html`<${Btn} kind="danger-ghost" icon="trash" onClick=${() => setConfirmReset(true)}>${PRACTICE ? tr('Clear practice data', 'Xóa dữ liệu tập') : tr('Clear demo data', 'Xóa dữ liệu thử')}</${Btn}>`}
       </div>
     </section>
     ${confirmReset && html`<${Confirm} title=${tr('Clear all demo data?', 'Xóa toàn bộ dữ liệu thử?')} danger confirmLabel=${tr('Clear demo data', 'Xóa dữ liệu thử')}

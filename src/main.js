@@ -2,7 +2,7 @@
 
 import { html, render, useState, useEffect } from '../vendor/preact-htm.js';
 import { tr, getLang, setLang, onLang } from './i18n.js';
-import { useStore, init, toast } from './store.js';
+import { useStore, init, toast, PRACTICE, setPractice } from './store.js';
 import { Icon, Toast } from './components.js';
 import { Home } from './views/home.js';
 import { ScanPage } from './views/scan.js';
@@ -38,7 +38,7 @@ function useLang() {
 }
 
 function SyncPill({ s }) {
-  if (s.mode === 'local') return html`<span class="sync warn" title=${tr('Data is saved only in this browser until Firebase is connected.', 'Dữ liệu chỉ lưu trên trình duyệt này cho đến khi kết nối Firebase.')}><${Icon} name="info" /><span class="st">${tr('Demo mode', 'Chế độ thử')}</span></span>`;
+  if (s.mode === 'local') return html`<span class="sync warn" title=${PRACTICE ? tr('Practice mode: saved only in this browser, not in the shared database.', 'Chế độ tập: chỉ lưu trên trình duyệt này, không vào cơ sở dữ liệu chung.') : tr('Data is saved only in this browser until Firebase is connected.', 'Dữ liệu chỉ lưu trên trình duyệt này cho đến khi kết nối Firebase.')}><${Icon} name="info" /><span class="st">${PRACTICE ? tr('Practice', 'Tập') : tr('Demo mode', 'Chế độ thử')}</span></span>`;
   const y = s.sync;
   if (y.error === 'permission') return html`<span class="sync bad"><${Icon} name="alert" /><span class="st">${tr('No access', 'Không có quyền')}</span></span>`;
   if (!y.online) return html`<span class="sync warn"><${Icon} name="wifiOff" /><span class="st">${tr('Offline', 'Mất mạng')}</span>${y.pending ? ` · ${y.pending}` : ''}</span>`;
@@ -95,6 +95,8 @@ function App() {
         </div>
       </div>
     </header>
+    ${PRACTICE && html`<div class="practice-strip"><${Icon} name="info" /><span><b>${tr('PRACTICE MODE', 'CHẾ ĐỘ TẬP')}</b> — ${tr('saved only on this device, not in the shared database.', 'chỉ lưu trên thiết bị này, không vào cơ sở dữ liệu chung.')}</span>
+      <button class="link" onClick=${() => setPractice(false)}>${tr('Leave practice mode', 'Thoát chế độ tập')}</button></div>`}
     <nav class="tabbar" aria-label=${tr('Main', 'Chính')}>
       <div>
         ${NAV.map((n) => html`<a href=${'#/' + n.key} aria-current=${active === n.key ? 'page' : undefined}><${Icon} name=${n.icon} />${tr(n.en, n.vi)}</a>`)}

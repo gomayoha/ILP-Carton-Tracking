@@ -155,9 +155,17 @@ export function findCartonInRecord(rec, cid) {
 // ── Lines incl. scanned cartons (transfers / shipments built by scanning) ───
 
 // Scanned cartons grouped into lines: one group per item + carton size.
+// Part of an opened carton (shipment "Taken" < what was inside): its weights in proportion to the
+// pieces taken, because the carton's own weights are for a full carton.
+export function scanWeights(s) {
+  const part = num(s.full) > 0 && num(s.qty) < num(s.full) ? num(s.qty) / num(s.full) : 1;
+  return part < 1 ? { ...s, nw: s.nw ? round(num(s.nw) * part, 2) : s.nw, gw: s.gw ? round(num(s.gw) * part, 2) : s.gw } : s;
+}
+
 export function scanGroups(rec) {
   const groups = new Map();
-  for (const s of rec.scans || []) {
+  for (const s0 of rec.scans || []) {
+    const s = scanWeights(s0);
     const k = [s.code, s.qty, s.nw || '', s.gw || '', s.l || '', s.w || '', s.h || ''].join('|');
     if (!groups.has(k)) {
       groups.set(k, { code: s.code, ref: s.ref, desc: s.desc, unit: s.unit, qtyPer: num(s.qty), cartons: 0, qty: 0, ids: [],
@@ -227,8 +235,9 @@ export function totals(rec) {
     qty += num(line.qty); cartons += w.count; nw += w.nw; gw += w.gw; cbm += w.cbm;
     units.add(line.unit || 'piece');
   }
-  for (const s of rec.scans || []) {
+  for (const s0 of rec.scans || []) {
     if (rec.type === 'handoff') continue;
+    const s = scanWeights(s0);
     qty += num(s.qty); cartons += 1; units.add(s.unit || 'piece');
     nw += num(s.nw); gw += num(s.gw); cbm += (num(s.l) * num(s.w) * num(s.h)) / 1e6;
   }
@@ -728,7 +737,7 @@ export function linesToTable(lines) {
 
 // Purchase order number anywhere on the document (e.g. POVNP-2600001, PONL-2600001, PO #1234567890).
 export function docPO(text) {
-  const m = String(text).toUpperCase().match(/\bPO[A-Z]{0,5}-\d{5,}\b/) || String(text).toUpperCase().match(/\bPO\s*(?:NO\.?|#|:)?\s*([A-Z0-9-]{5,})/);
+  const m = String(text).toUpperCase().match(/\bPO[A-Z]{0,5}-\d{5,}\b/) || String(text).toUpperCase().match(/\bPO\s*(?:NO\.?|#)?\s*:?\s*((?=[A-Z-]*\d)[A-Z0-9][A-Z0-9-]{4,})/);
   return m ? (m[1] || m[0]) : '';
 }
 
@@ -814,10 +823,11 @@ export function looseLines(text, { firstLn = 1 } = {}) {
     const val = (t) => { const v = docNum(t); return typeof v === 'number' && v > 0 ? v : 0; };
     let qty = 0;
     if (unitAt >= 0) for (const t of toks.slice(unitAt + 1, unitAt + 3)) if (QTY_TOKEN.test(t) && val(t)) { qty = val(t); break; }
+    const sure = qty > 0; // found right after the unit word; anything below is a guess
     if (!qty) for (const t of seg[0].split(/\s+/)) if (QTY_TOKEN.test(t) && val(t)) { qty = val(t); break; }
     if (!qty) for (const t of toks) if (QTY_TOKEN.test(t) && val(t)) { qty = val(t); break; }
     const unit = unitAt >= 0 ? unitCode(toks[unitAt]) : 'piece';
-    out.push({ ln: ln++, code: m[0], ref: '', desc: '', unit, qty, ppc: '', reqQty: '', wo: '', po: '', nw: '', gw: '', pnw: '', pgw: '', l: '', w: '', h: '', printDate: '', packDate: '', fsc: '', bundle: '', pallet: '', perPallet: '', location: '', entity: '' });
+    out.push({ ln: ln++, code: m[0], ref: '', desc: '', unit, qty, ppc: '', reqQty: '', wo: '', po: '', nw: '', gw: '', pnw: '', pgw: '', l: '', w: '', h: '', printDate: '', packDate: '', fsc: '', bundle: '', pallet: '', perPallet: '', location: '', entity: '', ...(sure ? {} : { qtyGuess: true }) });
   }
   return out;
 }

@@ -134,7 +134,7 @@ export function RecordView({ id }) {
     </div>
 
     ${(rec.pick || []).length > 0 && (() => { const pp = pickProgress(rec); return html`<div class=${'banner ' + (pp.complete ? 'info' : 'warn')}><${Icon} name=${pp.complete ? 'check' : 'alert'} /><div>
-      <b>${tr('Pick list', 'Danh sách lấy hàng')}${rec.pickFile ? ' · ' + rec.pickFile : ''}:</b> ${pp.gotCartons} / ${pp.cartons} ${tr('cartons', 'thùng')} · ${fmtNum(pp.gotQty)} / ${fmtNum(pp.qty)} —
+      <b>${tr('Pick list', 'Danh sách lấy hàng')}${rec.pickFile ? ' · ' + rec.pickFile : ''}:</b> ${pp.cartons > 0 ? `${pp.gotCartons} / ${pp.cartons} ${tr('cartons', 'thùng')} · ` : `${pp.gotCartons} ${tr('cartons', 'thùng')} · `}${fmtNum(pp.gotQty)} / ${fmtNum(pp.qty)} ${tr('pcs', 'cái')} —
       ${pp.complete ? tr('complete.', 'đã đủ.') : [...pp.rows.filter((r) => r.status !== 'done').map((r) => `${r.code}: ${fmtNum(r.gotQty)} / ${fmtNum(r.qty)}`), ...pp.extra.map((r) => `${r.code}: ${tr('not on the list', 'không có trong DS')}`)].join(' · ')}</div></div>`; })()}
     <div class="kpi-strip">
       <div><small>${tr('Total quantity', 'Tổng số lượng')}</small><b>${fmtNum(t.qty, t.qty % 1 ? 2 : 0)}</b><span>${t.unit ? unitLabel(t.unit) : ''}</span></div>

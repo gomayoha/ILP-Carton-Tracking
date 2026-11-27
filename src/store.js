@@ -5,6 +5,18 @@ import { FIREBASE_CONFIG } from './config.js';
 import { newId, norm, num, clean, incrementDocNo, today } from './util.js';
 import { recordCartons, findCartonInRecord, split, currentStock } from './model.js';
 
+// Practice mode: open the app with ?practice=1 and this device runs on its own copy, saved only in
+// this browser, so rehearsals never touch the shared database. ?practice=0 (or the button) leaves it.
+export const PRACTICE = (() => {
+  try {
+    const q = new URLSearchParams(location.search).get('practice');
+    if (q !== null) localStorage.setItem('ilp.practice', q === '0' ? '' : '1');
+    return !!localStorage.getItem('ilp.practice');
+  } catch { return false; }
+})();
+const CLOUD = PRACTICE ? null : FIREBASE_CONFIG;
+export const setPractice = (on) => { location.href = location.pathname + '?practice=' + (on ? '1' : '0') + '#/'; };
+
 export const DEFAULT_SETTINGS = {
   warehouses: [
     { code: 'PRO', name: 'Production', vi: 'Sản xuất', short: 'production', layout: 'print' },
@@ -32,10 +44,10 @@ function loadDevice() {
 
 export const state = {
   ready: false,
-  mode: FIREBASE_CONFIG ? 'cloud' : 'local',
+  mode: CLOUD ? 'cloud' : 'local',
   needLogin: false,
   user: null,
-  sync: { online: navigator.onLine, pending: 0, synced: !FIREBASE_CONFIG, error: null },
+  sync: { online: navigator.onLine, pending: 0, synced: !CLOUD, error: null },
   records: new Map(),
   items: new Map(),
   itemsMeta: null,
@@ -144,15 +156,26 @@ export async function importItems(rows, source) {
 
 // Remember carton size, weights and dimensions used on a slip so next time they fill in by themselves.
 function learnFromRecord(rec) {
+  // Packing lists often have a full-carton row and an "odd" row for the same item (3 × 100 + 1 × 40).
+  // Learn carton size and weights only from the row with the biggest carton of each item, and never
+  // from a lone carton smaller than the size already known (that is an odd box, not the standard).
+  const best = new Map();
   for (const line of rec.lines || []) {
     const code = clean(line.code).toUpperCase();
     if (!code) continue;
+    const b = best.get(code);
+    if (!b || (!line.oneLabel && (b.oneLabel || num(line.ppc) > num(b.ppc)))) best.set(code, line);
+  }
+  for (const [code, line] of best) {
     const it = state.items.get(code) || { code };
     const patch = {};
     const take = (f, v) => { if (v !== '' && v !== undefined && num(v) > 0 && num(it[f]) !== num(v)) patch[f] = num(v); };
     const takeText = (f, v) => { if (clean(v) && clean(it[f]) !== clean(v)) patch[f] = clean(v); };
-    if (!line.oneLabel) take('ppc', line.ppc); // "1 sticker for the whole line" is not a carton size
-    take('nw', line.nw); take('gw', line.gw); take('l', line.l); take('w', line.w); take('h', line.h);
+    const oddBox = num(it.ppc) > 0 && num(line.ppc) < num(it.ppc) && num(line.qty) <= num(line.ppc);
+    if (!line.oneLabel && !oddBox) { // "1 sticker for the whole line" is not a carton size
+      take('ppc', line.ppc);
+      take('nw', line.nw); take('gw', line.gw); take('l', line.l); take('w', line.w); take('h', line.h);
+    }
     if (rec.type === 'shipment') takeText('cust', rec.customer);
     if (!it.desc) takeText('desc', line.desc);
     if (!it.ref) takeText('ref', line.ref);
@@ -369,9 +392,9 @@ export async function init() {
   window.addEventListener('online', () => hooks.onStatus({ online: true }));
   window.addEventListener('offline', () => hooks.onStatus({ online: false }));
   try {
-    if (FIREBASE_CONFIG) {
+    if (CLOUD) {
       backend = await import('./db/firebase.js');
-      await backend.start(FIREBASE_CONFIG, hooks);
+      await backend.start(CLOUD, hooks);
     } else {
       backend = await import('./db/local.js');
       await backend.start(hooks);
@@ -386,7 +409,13 @@ export async function init() {
 
 export const signIn = (email, pw) => backend.signIn(email, pw);
 export const signOut = () => backend.signOut();
-export const resetDemo = async () => { if (backend.resetDemo) { await backend.resetDemo(); location.reload(); } };
+export const resetDemo = async () => {
+  if (!backend.resetDemo) return;
+  await backend.resetDemo();
+  // Unsaved drafts of this mode go too (practice drafts only, when practising).
+  try { for (const k of Object.keys(localStorage)) if (k.startsWith(PRACTICE ? 'ilp.draft.practice.' : 'ilp.draft.')) localStorage.removeItem(k); } catch {}
+  location.reload();
+};
 
 // ── Receipt confirmation ────────────────────────────────────────────────────
 

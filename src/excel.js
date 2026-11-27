@@ -123,21 +123,39 @@ function readLines(t, opts) {
   return res;
 }
 
-function fromTable(t, opts, how) {
-  let res = how === 'photo' ? readLines(t, opts) : packingListLines(t.rows, opts);
-  // Photos: the row-by-row reading only fills gaps (a missing quantity or unit, or a missed code).
-  if (how === 'photo' && t.rows2) {
-    const alt = readLines(t.rows2, opts);
-    const byCode = new Map(alt.lines.map((l) => [l.code, l]));
-    const have = new Set(res.lines.map((l) => l.code));
-    res.lines = res.lines.map((l) => {
-      const b = byCode.get(l.code);
-      if (!b) return l;
-      return { ...l, qty: num(l.qty) > 0 ? l.qty : b.qty, unit: l.unit !== 'piece' ? l.unit : b.unit };
-    });
+// Photos: a second reading only fills what the first one missed (a quantity or unit, or a whole code).
+// A quantity the first reading only guessed (not right after the unit word) gives way to a sure one.
+function fillGaps(res, alt, { addCodes = true } = {}) {
+  const byCode = new Map(alt.lines.map((l) => [l.code, l]));
+  const have = new Set(res.lines.map((l) => l.code));
+  res.lines = res.lines.map((l) => {
+    const b = byCode.get(l.code);
+    if (!b || !(num(b.qty) > 0)) return l.unit !== 'piece' || !b ? l : { ...l, unit: b.unit };
+    const take = !(num(l.qty) > 0) || (l.qtyGuess && !b.qtyGuess);
+    const out = { ...l, unit: l.unit !== 'piece' ? l.unit : b.unit };
+    if (take) { out.qty = b.qty; if (b.qtyGuess) out.qtyGuess = true; else delete out.qtyGuess; }
+    return out;
+  });
+  if (addCodes || !res.lines.length) {
     let ln = Math.max(0, ...res.lines.map((l) => l.ln)) + 1;
-    for (const b of alt.lines) if (!have.has(b.code)) res.lines.push({ ...b, ln: ln++ });
+    for (const b of alt.lines) if (!have.has(b.code)) { res.lines.push({ ...b, ln: ln++ }); have.add(b.code); }
   }
+  return res;
+}
+
+async function fromTable(t, opts, how) {
+  let res = how === 'photo' ? readLines(t, opts) : packingListLines(t.rows, opts);
+  if (how === 'photo' && t.rows2) res = fillGaps(res, readLines(t.rows2, opts));
+  // A quantity still missing or only guessed (uneven light, or numbers written right against the cell
+  // border): read the photo again with the light evened out and the table borders removed. This second
+  // reading only fills gaps; it never adds codes the first one did not see.
+  if (how === 'photo' && t.retry && (!res.lines.length || res.lines.some((l) => !(num(l.qty) > 0) || l.qtyGuess))) {
+    const t2 = await t.retry();
+    res = fillGaps(res, readLines(t2, opts), { addCodes: false });
+    if (t2.rows2) res = fillGaps(res, readLines(t2.rows2, opts), { addCodes: false });
+    if (!docPO(t.text) && docPO(t2.text)) t = { ...t, text: t.text + '\n' + t2.text };
+  }
+  for (const l of res.lines) delete l.qtyGuess;
   const po = docPO(t.text);
   if (po) for (const l of res.lines) if (!l.po) l.po = po;
   if (how === 'photo' && res.lines.length) res.warnings.unshift(tr('Read from a picture: check every code and quantity against the paper before printing.', 'Đọc từ ảnh: kiểm tra từng mã hàng và số lượng với chứng từ giấy trước khi in.'));

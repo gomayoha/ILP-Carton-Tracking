@@ -193,6 +193,9 @@
   eq('document numbers', [docNum('1.000'), docNum('2,700.00'), docNum('4.5'), docNum('12'), docNum('Hộp')], [1000, 2700, 4.5, 12, 'Hộp']);
   eq('carton size in mm becomes cm', [parseDims('600*400*360'), parseDims('40 x 24 x 21')], [{ l: 60, w: 40, h: 36 }, { l: 40, w: 24, h: 21 }]);
   eq('PO found on the document', [docPO('PO: POVNP-2600011'), docPO('Số PO khách hàng: POVNP-2600012'), docPO('nothing here')], ['POVNP-2600011', 'POVNP-2600012', '']);
+  eq('opened carton on a shipment: weights in proportion to the pieces taken', scanGroups({ scans: [{ cid: 'X-1-1', code: 'ILPTST00000009', qty: 50, full: 100, nw: 5.2, gw: 5.6 }] }).map((g) => [g.qty, g.nw, g.gw]), [[50, 2.6, 2.8]]);
+  eq('opened carton: shipment totals use the same weights', (({ nw, gw }) => [nw, gw])(totals({ type: 'shipment', scans: [{ cid: 'X-1-1', code: 'ILPTST00000009', qty: 50, full: 100, nw: 5.2, gw: 5.6 }, { cid: 'X-1-2', code: 'ILPTST00000009', qty: 100, full: 100, nw: 5.2, gw: 5.6 }] })), [7.8, 8.4]);
+  eq('a "Customer PO" column title is not taken as the PO', [docPO('Customer PO Customer Style Internal Code'), docPO('Customer PO PO NO: PO-TEST-02')], ['', 'PO-TEST-02']);
   const T = (s, x, y, w) => ({ s, x, y, w, h: 9, page: 1 });
   const pxk = linesToTable(textToLines([
     T('PHIẾU XUẤT KHO', 200, 700, 150), T('Bên mua hàng: Công ty Test', 20, 660, 200),

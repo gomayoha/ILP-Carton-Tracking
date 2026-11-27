@@ -2,7 +2,7 @@
 
 import { html, useState, useEffect, useRef } from '../../vendor/preact-htm.js';
 import { tr } from '../i18n.js';
-import { useStore, getRecord, newRecord, saveRecord, docNoTaken, nextDocNo, findCarton, cartonLocation, toast, state } from '../store.js';
+import { useStore, getRecord, newRecord, saveRecord, docNoTaken, nextDocNo, findCarton, cartonLocation, toast, state, PRACTICE } from '../store.js';
 import { Icon, Btn, Field, Input, NumInput, Select, ItemPicker, WhSelect, PageHead, Modal, Chip } from '../components.js';
 import { UNITS, FSC, perCartonNotation, handNotation, split, notation, totals, validate, typeName, scanGroups, unitLabel, recordCartons, pickFromLines, pickProgress, pickSuggest, currentStock, locLabel, closestCode } from '../model.js';
 import { num, round, fmtNum, fmtDec, newId, today, clean, go, normLoc } from '../util.js';
@@ -11,7 +11,8 @@ import { Scanner, feedback } from './scanner.js';
 import { printLabels } from '../print.js';
 import { parsePackingListFile, downloadStockInTemplate } from '../excel.js';
 
-const draftKey = (type) => `ilp.draft.new.${type}`;
+// Practice mode keeps its own drafts, so a practice draft never shows up in the real app.
+const draftKey = (type) => `ilp.draft.${PRACTICE ? 'practice.' : ''}new.${type}`;
 const unitOpts = () => UNITS.map((u) => ({ value: u.code, label: tr(u.en, u.vi) }));
 
 function blankLine(ln) {

@@ -1,6 +1,6 @@
 import { html } from '../../vendor/preact-htm.js';
 import { tr } from '../i18n.js';
-import { useStore, recordsList, saveRecord, saveItem, rowToItem, toast } from '../store.js';
+import { useStore, recordsList, saveRecord, saveItem, rowToItem, toast, PRACTICE } from '../store.js';
 import { Icon, Btn, Chip } from '../components.js';
 import { totals, typeShort, split } from '../model.js';
 import { today, addDays, fmtDate, fmtNum } from '../util.js';
@@ -68,7 +68,9 @@ export function Home() {
     </section>
 
     ${s.mode === 'local' && html`<div class="banner warn"><${Icon} name="info" />
-      <div><b>${tr('Demo mode', 'Chế độ thử')}</b> — ${tr('data is saved only in this browser. Connect Firebase (docs/SETUP.md) to share it across phones and PCs.', 'dữ liệu chỉ lưu trên trình duyệt này. Kết nối Firebase (docs/SETUP.md) để dùng chung trên điện thoại và máy tính.')}
+      <div>${PRACTICE
+        ? html`<b>${tr('Practice mode', 'Chế độ tập')}</b> — ${tr('try everything here; nothing goes to the shared database. Load the sample items first, then use the practice files. Settings → Clear practice data starts again.', 'thử mọi thao tác ở đây; không có gì vào cơ sở dữ liệu chung. Tải mã hàng mẫu trước, rồi dùng các file tập. Cài đặt → Xóa dữ liệu tập để làm lại.')}`
+        : html`<b>${tr('Demo mode', 'Chế độ thử')}</b> — ${tr('data is saved only in this browser. Connect Firebase (docs/SETUP.md) to share it across phones and PCs.', 'dữ liệu chỉ lưu trên trình duyệt này. Kết nối Firebase (docs/SETUP.md) để dùng chung trên điện thoại và máy tính.')}`}
       ${!s.records.has('S1955A0B') && html`<div class="banner-actions"><${Btn} small icon="sparkle" onClick=${loadSample}>${tr('Load sample: slip 0001955 + packing list IDE0004000', 'Tải dữ liệu mẫu: phiếu 0001955 + packing list IDE0004000')}</${Btn}></div>`}</div>
     </div>`}
 
