@@ -48,6 +48,13 @@ export function Scanner({ onCode, compact }) {
       const sc = new QrScanner(video.current, (res) => handle(res.data), {
         preferredCamera: 'environment', highlightScanRegion: true, highlightCodeOutline: true,
         maxScansPerSecond: 8, returnDetailedScanResult: true,
+        // The library's default reads only a 400 px copy of the middle 2/3 of the picture, so a small QR
+        // (an A4 sheet of 10, or labels on a laptop screen) is too blurry to decode. Read the middle 85%
+        // at up to 1000 px instead.
+        calculateScanRegion: (v) => {
+          const size = Math.round(0.85 * Math.min(v.videoWidth, v.videoHeight)), d = Math.min(size, 1000);
+          return { x: Math.round((v.videoWidth - size) / 2), y: Math.round((v.videoHeight - size) / 2), width: size, height: size, downScaledWidth: d, downScaledHeight: d };
+        },
       });
       scanner.current = sc;
       await sc.start();

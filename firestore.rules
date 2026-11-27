@@ -23,7 +23,7 @@ service cloud.firestore {
       allow read: if allowed();
       allow create, update: if allowed()
         && request.resource.data.id == id
-        && request.resource.data.type in ['handoff', 'transfer', 'shipment']
+        && request.resource.data.type in ['handoff', 'inbound', 'transfer', 'shipment', 'putaway']
         && request.resource.data.status in ['active', 'void'];
       allow delete: if false;
     }

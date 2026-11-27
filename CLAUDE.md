@@ -74,8 +74,9 @@ Done
 - [x] Pick up: on a shipment, upload the delivery packing list as a pick list (`rec.pick`, `pickProgress`); scanning warns on items not on the list / too many; the shipment page shows short / complete (25 Nov 2026)
 
 Waiting on Yohan
-- [ ] Push the local commits in GitHub Desktop (needed before any demo) — pushed up to v1.6.0 on 26 Nov 2026; v1.6.1 (photo row re-read) still to push
-- [ ] Push v1.7.0 (practice mode) in GitHub Desktop, then do the practice script (`reference/practice/0 Practice script`) until smooth
+- [x] Pushed v1.7.0 (live 27 Nov 2026)
+- [ ] **Publish the new `firestore.rules` in the Firebase console** (27 Nov 2026: the live rules only allowed handoff/transfer/shipment, so supplier receipts and put-aways could not save to the shared database; the live DB had only 3 handoff records) — then push v1.7.1
+- [ ] Do the practice script (`reference/practice/0 Practice script`) until smooth
 - [ ] Phone + barcode-printer test with Yohan before the Teams demo (Fri 27 Nov 2026, 11:00, proposed to Ms Ly) — Round 6 of the practice script
 - [ ] Teams demo with Ms Ly before the end of the week of 23 Nov 2026 (promised): Excel upload → stickers → scan receipt → shipment scan → packing list
 - [ ] Send the email asking Ms Ly to collect info from China / France / UAE (reply-all on the MD's thread, due Fri 27 Nov)

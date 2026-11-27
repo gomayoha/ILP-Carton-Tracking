@@ -2,7 +2,7 @@
 
 import { html } from '../../vendor/preact-htm.js';
 import { tr } from '../i18n.js';
-import { useStore, findCarton, cartonMovements, cartonLocation, getRecord } from '../store.js';
+import { useStore, PRACTICE, findCarton, cartonMovements, cartonLocation, getRecord } from '../store.js';
 import { Icon, Btn, Chip, PageHead, Empty } from '../components.js';
 import { typeName, unitLabel, fmtWO, warehouse, currentStock } from '../model.js';
 import { fmtDate, fmtNum, fmtDec, num } from '../util.js';
@@ -18,6 +18,8 @@ export function CartonResult({ cid, compact }) {
         <h3>${rec ? tr('This carton is no longer on its record', 'Thùng này không còn trong chứng từ') : tr('Carton not found', 'Không tìm thấy thùng')}</h3>
         <p class="muted">${rec
           ? tr(`Record ${rec.docNo} was edited after the label was printed (carton count changed). Reprint the labels for that record.`, `Chứng từ ${rec.docNo} đã được sửa sau khi in nhãn (thay đổi số thùng). Hãy in lại nhãn của chứng từ này.`)
+          : PRACTICE
+            ? tr('Practice mode keeps its data on each device separately, so a carton made on another phone or computer is not here. Make the receipt on this device, or leave practice mode to use the shared database.', 'Chế độ tập dùng lưu dữ liệu riêng trên từng thiết bị, nên thùng tạo trên điện thoại hoặc máy tính khác không có ở đây. Hãy tạo phiếu nhận trên thiết bị này, hoặc thoát chế độ tập để dùng dữ liệu chung.')
           : s.mode === 'cloud' && !s.sync.synced
             ? tr('Still downloading records — wait a moment and scan again.', 'Đang tải dữ liệu — chờ một chút rồi quét lại.')
             : tr('No record has this carton ID. If it was created on another device, check that device is online so it can sync.', 'Không có chứng từ nào chứa mã thùng này. Nếu được tạo trên thiết bị khác, hãy kiểm tra thiết bị đó đã có mạng để đồng bộ.')}</p>
