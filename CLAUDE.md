@@ -76,7 +76,8 @@ Done
 Waiting on Yohan
 - [x] Pushed v1.7.0 (live 27 Nov 2026)
 - [x] Published the new `firestore.rules` in the Firebase console (27 Nov 2026, 12:52; the live rules only allowed handoff/transfer/shipment, so supplier receipts and put-aways could not save to the shared database; the live DB had only 3 handoff records)
-- [ ] Push v1.7.1 in GitHub Desktop
+- [x] In-app camera fixed (27 Nov 2026): `vendor/qr-scanner-worker.min.js` was cut off since the first commit, so the live camera never decoded on iPhone/Safari (Android Chrome used its built-in reader). Replaced with the complete qr-scanner 1.4.2 files; added "Scan with photo" backup (phone's own camera → read QR from the photo)
+- [ ] Push v1.7.2 in GitHub Desktop, then retest the in-app camera on the iPhone
 - [ ] Do the practice script (`reference/practice/0 Practice script`) until smooth
 - [ ] Phone + barcode-printer test with Yohan before the Teams demo (Fri 27 Nov 2026, 11:00, proposed to Ms Ly) — Round 6 of the practice script
 - [ ] Teams demo with Ms Ly before the end of the week of 23 Nov 2026 (promised): Excel upload → stickers → scan receipt → shipment scan → packing list

@@ -347,6 +347,8 @@ table.data.edit .input { min-height: 38px; font-size: 13.5px; }
 .scan-overlay p { font-size: 13.5px; max-width: 340px; margin: 0; color: color-mix(in srgb, var(--white) 80%, transparent); }
 .scan-overlay .btn.primary { background: var(--sage); color: var(--black); border-color: var(--sage); }
 .scan-tools { position: absolute; top: 10px; right: 10px; display: flex; gap: 6px; }
+.scan-photo { display: flex; gap: 10px; align-items: center; }
+.scan-photo .small { font-size: 12.5px; line-height: 1.35; }
 .scan-manual { display: flex; gap: 8px; align-items: center; border: 1px solid var(--line); border-radius: 10px; padding: 4px 4px 4px 12px; }
 .scan-manual svg { color: var(--muted); }
 .scan-manual .input { border: 0; min-height: 40px; padding: 6px 4px; box-shadow: none; font-family: var(--mono); font-size: 14px; }

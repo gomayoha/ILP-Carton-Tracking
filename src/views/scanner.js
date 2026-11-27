@@ -66,6 +66,35 @@ export function Scanner({ onCode, compact }) {
     }
   };
 
+  // Backup for phones whose live camera can't focus close up (many iPhones): take a normal photo with
+  // the phone's own camera (sharp, focuses close) and read the QR from that photo.
+  const fileIn = useRef();
+  const [photoMsg, setPhotoMsg] = useState('');
+  const readPhoto = async (file) => {
+    if (!file) return;
+    setPhotoMsg(tr('Reading the photo…', 'Đang đọc ảnh…'));
+    try {
+      const QrScanner = (await import('../../vendor/qr-scanner.min.js')).default;
+      const bmp = await createImageBitmap(file);
+      let text = '';
+      for (const max of [1600, 2600]) {
+        const k = Math.min(1, max / Math.max(bmp.width, bmp.height));
+        const c = document.createElement('canvas');
+        c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+        c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+        try { text = (await QrScanner.scanImage(c, { returnDetailedScanResult: true })).data; } catch {}
+        if (text || k === 1) break;
+      }
+      if (!text) throw new Error('no QR');
+      setPhotoMsg('');
+      last.current = { text: '', at: 0 };
+      handle(text);
+    } catch (e) {
+      feedback(false);
+      setPhotoMsg(tr('No QR code found in the photo. Take it again with one sticker filling most of the picture.', 'Không tìm thấy mã QR trong ảnh. Chụp lại sao cho một nhãn chiếm gần hết khung hình.'));
+    } finally { if (fileIn.current) fileIn.current.value = ''; }
+  };
+
   const stop = () => {
     if (scanner.current) { scanner.current.stop(); scanner.current.destroy(); scanner.current = null; }
     setCam('idle');
@@ -104,6 +133,11 @@ export function Scanner({ onCode, compact }) {
         ${hasFlash && html`<button class="icon-btn light" aria-pressed=${flash} onClick=${async () => { await scanner.current.toggleFlash(); setFlash(scanner.current.isFlashOn()); }} aria-label=${tr('Torch', 'Đèn')}><${Icon} name="sparkle" /></button>`}
         <button class="icon-btn light" onClick=${stop} aria-label=${tr('Stop camera', 'Tắt camera')}><${Icon} name="x" /></button>
       </div>`}
+    </div>
+    <div class="scan-photo">
+      <input ref=${fileIn} type="file" accept="image/*" capture="environment" hidden onChange=${(e) => readPhoto(e.target.files && e.target.files[0])} />
+      <${Btn} icon="camera" onClick=${() => fileIn.current && fileIn.current.click()}>${tr('Scan with photo', 'Quét bằng ảnh chụp')}</${Btn}>
+      <span class="muted small">${photoMsg || tr('Live camera not reading? Hold the phone 20–30 cm away, or take a photo of the sticker.', 'Camera không đọc được? Cầm điện thoại cách 20–30 cm, hoặc chụp ảnh nhãn.')}</span>
     </div>
     <div class="scan-manual">
       <${Icon} name="keyboard" />
